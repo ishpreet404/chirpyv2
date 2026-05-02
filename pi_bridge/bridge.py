@@ -684,7 +684,7 @@ class BackendRelay:
             return
         try:
             async with self._session.post(
-                f"{BACKEND_HTTP_URL}{path}",
+                f"{BACKEND_HTTP_URL.rstrip('/')}{path}",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=2),
             ) as resp:
