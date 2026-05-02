@@ -62,7 +62,7 @@ except ImportError:
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-SERIAL_PORT      = "/dev/ttyAMA0"   # Pi UART0 — GPIO 14/15
+SERIAL_PORT      = "/dev/serial0"  # Pi UART0 — GPIO 14/15 (maps to ttyS0 here)
 SERIAL_BAUD      = 115200
 BACKEND_WS_URL   = "ws://localhost:8000/ws/rover"
 BACKEND_HTTP_URL = "http://localhost:8000"
@@ -797,6 +797,7 @@ class RoverBridge:
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    os.makedirs(os.path.expanduser('~/rover_logs'), exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
@@ -808,7 +809,6 @@ if __name__ == '__main__':
             ), mode='w'),
         ]
     )
-    os.makedirs(os.path.expanduser('~/rover_logs'), exist_ok=True)
 
     bridge = RoverBridge()
     try:
