@@ -2,20 +2,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_COMMANDS = ["F", "B", "L", "R", "S"];
 
-function buildWsUrl() {
-	if (process.env.REACT_APP_WS_URL) return process.env.REACT_APP_WS_URL;
-	const proto = window.location.protocol === "https:" ? "wss" : "ws";
-	return `${proto}://${window.location.hostname}:8000/ws/dashboard`;
+function buildHttpBase() {
+	if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+	if (process.env.REACT_APP_WS_URL) {
+		return process.env.REACT_APP_WS_URL.replace(/^ws/, "http").replace(
+			/\/ws\/dashboard$/,
+			"",
+		);
+	}
+	const proto = window.location.protocol === "https:" ? "https" : "http";
+	return `${proto}://${window.location.hostname}:8000`;
 }
 
-function buildHttpBase(wsUrl) {
-	return wsUrl.replace(/^ws/, "http").replace(/\/ws\/dashboard$/, "");
+async function fetchJson(url, options) {
+	const res = await fetch(url, options);
+	if (!res.ok) {
+		throw new Error(`HTTP ${res.status}`);
+	}
+	return res.json();
 }
 
 export function useRoverWebSocket() {
-	const wsRef = useRef(null);
-	const wsUrlRef = useRef(buildWsUrl());
-	const httpBaseRef = useRef(buildHttpBase(wsUrlRef.current));
+	const httpBaseRef = useRef(buildHttpBase());
 
 	const [connected, setConnected] = useState(false);
 	const [telemetry, setTelemetry] = useState(null);
@@ -35,99 +43,73 @@ export function useRoverWebSocket() {
 
 	useEffect(() => {
 		let cancelled = false;
-		let reconnectTimer = null;
 
-		const connect = () => {
-			if (cancelled) return;
-			const ws = new WebSocket(wsUrlRef.current);
-			wsRef.current = ws;
-
-			ws.onopen = () => setConnected(true);
-			ws.onclose = () => {
-				setConnected(false);
-				if (!cancelled) {
-					reconnectTimer = setTimeout(connect, 1500);
-				}
-			};
-			ws.onerror = () => ws.close();
-
-			ws.onmessage = (evt) => {
-				let msg;
-				try {
-					msg = JSON.parse(evt.data);
-				} catch (e) {
-					return;
-				}
-
-				if (msg.type === "init") {
-					setTelemetry(msg.telemetry || null);
-					setPathData(msg.path || null);
-					setAlerts(msg.alerts || []);
-					if (msg.status) {
-						setStatus((prev) => ({
-							...prev,
-							...msg.status,
-							capabilities: msg.status.capabilities || prev.capabilities,
-						}));
-					}
-					return;
-				}
-
-				if (msg.type === "telemetry") {
-					setTelemetry(msg.telemetry || null);
-					if (msg.path) setPathData(msg.path);
-					return;
-				}
-
-				if (msg.type === "event") {
-					if (msg.alert) {
-						setAlerts((prev) => [msg.alert, ...prev].slice(0, 200));
-					}
-					return;
-				}
-
-				if (msg.type === "victim") {
-					if (msg.alert) {
-						setAlerts((prev) => [msg.alert, ...prev].slice(0, 200));
-					}
-					setStatus((prev) => ({
-						...prev,
-						victim_count: msg.count ?? prev.victim_count,
-					}));
-					return;
-				}
-
-				if (msg.type === "cmd_sent") {
-					if (msg.auto_mode != null) {
-						setStatus((prev) => ({ ...prev, auto_mode: msg.auto_mode }));
-					}
-					return;
-				}
-
-				if (msg.type === "mode" && msg.status) {
-					setStatus((prev) => ({
-						...prev,
-						motion_active: msg.status.motion_active,
-						motion_mode: msg.status.motion_mode,
-					}));
-					return;
-				}
-
-				if (msg.type === "heartbeat" && msg.status) {
-					setStatus((prev) => ({
-						...prev,
-						...msg.status,
-						capabilities: msg.status.capabilities || prev.capabilities,
-					}));
-				}
-			};
+		const pollStatus = async () => {
+			try {
+				const data = await fetchJson(`${httpBaseRef.current}/api/status`);
+				if (cancelled) return;
+				setConnected(true);
+				setStatus((prev) => ({
+					...prev,
+					...data,
+					capabilities: data.capabilities || prev.capabilities,
+				}));
+			} catch (e) {
+				if (!cancelled) setConnected(false);
+			}
 		};
 
-		connect();
+		const pollTelemetry = async () => {
+			try {
+				const data = await fetchJson(
+					`${httpBaseRef.current}/api/telemetry/history?limit=1`,
+				);
+				if (cancelled) return;
+				const latest = data.telemetry?.[data.telemetry.length - 1] || null;
+				if (latest) setTelemetry(latest);
+			} catch (e) {
+				// ignore telemetry errors
+			}
+		};
+
+		const pollPath = async () => {
+			try {
+				const data = await fetchJson(`${httpBaseRef.current}/api/path`);
+				if (cancelled) return;
+				setPathData(data || null);
+			} catch (e) {
+				// ignore path errors
+			}
+		};
+
+		const pollAlerts = async () => {
+			try {
+				const data = await fetchJson(
+					`${httpBaseRef.current}/api/alerts?limit=50`,
+				);
+				if (cancelled) return;
+				setAlerts(data.alerts || []);
+			} catch (e) {
+				// ignore alert errors
+			}
+		};
+
+		pollStatus();
+		pollTelemetry();
+		pollPath();
+		pollAlerts();
+
+		const statusTimer = setInterval(pollStatus, 1000);
+		const telemetryTimer = setInterval(pollTelemetry, 500);
+		const pathTimer = setInterval(pollPath, 1000);
+		const alertTimer = setInterval(pollAlerts, 2000);
+
 		return () => {
 			cancelled = true;
-			if (reconnectTimer) clearTimeout(reconnectTimer);
-			if (wsRef.current) wsRef.current.close();
+			clearInterval(statusTimer);
+			clearInterval(telemetryTimer);
+			clearInterval(pathTimer);
+			clearInterval(alertTimer);
 		};
 	}, []);
 
@@ -136,12 +118,6 @@ export function useRoverWebSocket() {
 			const clean = (cmd || "").toUpperCase();
 			const allowed = status?.capabilities?.commands || DEFAULT_COMMANDS;
 			if (!allowed.includes(clean)) return;
-
-			const ws = wsRef.current;
-			if (ws && ws.readyState === WebSocket.OPEN) {
-				ws.send(JSON.stringify({ type: "command", command: clean }));
-				return;
-			}
 
 			fetch(`${httpBaseRef.current}/api/command`, {
 				method: "POST",
@@ -158,21 +134,14 @@ export function useRoverWebSocket() {
 			const allowed = status?.capabilities?.modes || [];
 			const action = mode === "stop" ? "stop" : "start";
 			if (action === "start" && !allowed.includes(mode)) return;
-			const payload =
-				action === "stop"
-					? { type: "mode", action }
-					: { type: "mode", action, mode };
-
-			const ws = wsRef.current;
-			if (ws && ws.readyState === WebSocket.OPEN) {
-				ws.send(JSON.stringify(payload));
-				return;
-			}
 
 			fetch(`${httpBaseRef.current}/api/mode`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(action === "stop" ? { action: "stop" } : { mode }),
+				body:
+					action === "stop"
+						? JSON.stringify({ action: "stop" })
+						: JSON.stringify({ mode }),
 			}).catch(() => {});
 		},
 		[status],

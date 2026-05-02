@@ -49,7 +49,6 @@ from io import BytesIO
 import aiohttp
 import numpy as np
 import serial
-import websockets
 from aiohttp import web
 
 try:
@@ -619,44 +618,63 @@ class CameraStreamer:
 
 class BackendRelay:
     """
-    Maintains persistent WebSocket connection to backend.
-    Forwards telemetry, events, CV detections.
-    Buffers messages if disconnected and replays on reconnect.
+    Sends telemetry/events to backend over HTTP.
+    Avoids WebSocket dependencies for simpler setup.
     """
 
     def __init__(self):
-        self.ws           = None
-        self.connected    = False
-        self._msg_queue   : asyncio.Queue = asyncio.Queue(maxsize=500)
+        self._session: aiohttp.ClientSession | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._last_error_t = 0.0
 
-    async def connect_loop(self):
-        while True:
-            try:
-                async with websockets.connect(BACKEND_WS_URL) as ws:
-                    self.ws        = ws
-                    self.connected = True
-                    logging.info("Backend WS connected")
-                    await self._send_loop(ws)
-            except (websockets.ConnectionClosed, OSError) as e:
-                logging.warning(f"Backend WS disconnected: {e}")
-                self.connected = False
-                await asyncio.sleep(3)
+    async def start(self):
+        self._loop = asyncio.get_running_loop()
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
 
-    async def _send_loop(self, ws):
-        while True:
-            msg = await self._msg_queue.get()
-            try:
-                await ws.send(json.dumps(msg))
-            except websockets.ConnectionClosed:
-                await self._msg_queue.put(msg)  # re-queue
-                break
+    async def _post(self, path: str, payload: dict):
+        if not self._session:
+            return
+        try:
+            async with self._session.post(
+                f"{BACKEND_HTTP_URL}{path}",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=2),
+            ) as resp:
+                await resp.release()
+        except Exception as e:
+            now = time.time()
+            if now - self._last_error_t > 2.0:
+                logging.warning(f"Backend HTTP failed: {e}")
+                self._last_error_t = now
+
+    async def _dispatch(self, msg: dict):
+        msg_type = msg.get("type")
+        if msg_type == "telemetry":
+            await self._post("/api/telemetry", {
+                "data": msg.get("data", {}),
+                "abs_x": msg.get("abs_x", 0.0),
+                "abs_y": msg.get("abs_y", 0.0),
+                "path": msg.get("path", {}),
+            })
+        elif msg_type == "event":
+            await self._post("/api/event", {
+                "event": msg.get("event", ""),
+                "raw": msg.get("raw", ""),
+            })
+        elif msg_type == "victim_detected":
+            await self._post("/api/victim", {
+                "x": msg.get("x", 0.0),
+                "y": msg.get("y", 0.0),
+                "confidence": msg.get("confidence", 0.0),
+                "detections": msg.get("detections", []),
+            })
 
     def send(self, msg: dict):
-        """Non-blocking — drops if queue full (telemetry at 20Hz can overflow)."""
-        try:
-            self._msg_queue.put_nowait(msg)
-        except asyncio.QueueFull:
-            pass
+        """Non-blocking: schedule HTTP post on the event loop."""
+        if not self._loop:
+            return
+        self._loop.call_soon_threadsafe(asyncio.create_task, self._dispatch(dict(msg)))
 
 # ─── Main Rover Bridge ────────────────────────────────────────────────────────
 
@@ -759,6 +777,9 @@ class RoverBridge:
     # ── App runner ───────────────────────────────────────────────────────────
 
     async def run(self):
+        # Start backend relay (HTTP)
+        await self.relay.start()
+
         # Start camera streamer
         self.camera.start()
 
@@ -769,9 +790,6 @@ class RoverBridge:
             target=self.serial.read_loop, daemon=True
         )
         serial_thread.start()
-
-        # Start backend relay
-        asyncio.create_task(self.relay.connect_loop())
 
         # Build aiohttp app
         app = web.Application()

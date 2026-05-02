@@ -110,6 +110,7 @@ class MissionState:
         self.mission_active    = False
         self.mission_start_t   : float | None = None
         self.pi_connected      = False
+        self.pi_last_seen      = 0.0
         self.rover_state       = "UNKNOWN"   # STP/FWD/BCK/LFT/RGT
         self.auto_mode         = False
         self.obstacle_active   = False
@@ -156,6 +157,7 @@ class MissionState:
         self.latest_telemetry = {**data, 'abs_x': abs_x, 'abs_y': abs_y,
                                   'server_ts': time.time()}
         self.telemetry_history.append(self.latest_telemetry)
+        self.pi_last_seen = time.time()
         self.rover_state     = data.get('state', 'STP')
         self.obstacle_active = bool(data.get('obstacle', 0))
         victims = data.get('victims')
@@ -192,6 +194,12 @@ class MissionState:
 
 
 mission = MissionState()
+
+
+def _pi_connected() -> bool:
+    if mission.pi_last_seen <= 0:
+        return False
+    return (time.time() - mission.pi_last_seen) < 5.0
 
 mode_task: asyncio.Task | None = None
 mode_cancel: asyncio.Event | None = None
@@ -381,6 +389,7 @@ async def ws_rover(websocket: WebSocket):
             elif msg_type == 'event':
                 event = msg.get('event', '')
                 raw   = msg.get('raw', '')
+                mission.pi_last_seen = time.time()
 
                 if event == 'obstacle':
                     mission.obstacle_active = True
@@ -403,6 +412,7 @@ async def ws_rover(websocket: WebSocket):
                 x    = msg.get('x', 0.0)
                 y    = msg.get('y', 0.0)
                 conf = msg.get('confidence', 0.0)
+                mission.pi_last_seen = time.time()
                 alert = mission.add_victim(x, y, conf)
 
                 await mission.broadcast('dashboard', {
@@ -444,7 +454,7 @@ async def ws_dashboard(websocket: WebSocket):
         'path':      mission.path_data,
         'alerts':    list(mission.alerts)[:20],
         'status': {
-            'pi_connected':    mission.pi_connected,
+            'pi_connected':    _pi_connected(),
             'mission_active':  mission.mission_active,
             'rover_state':     mission.rover_state,
             'auto_mode':       mission.auto_mode,
@@ -512,7 +522,7 @@ async def get_status():
         mission_duration = round(time.time() - mission.mission_start_t, 1)
 
     return {
-        'pi_connected':    mission.pi_connected,
+        'pi_connected':    _pi_connected(),
         'mission_active':  mission.mission_active,
         'mission_duration_s': mission_duration,
         'rover_state':     mission.rover_state,
@@ -566,6 +576,72 @@ async def post_command(body: dict):
     })
 
     return {'sent': cmd, 'auto_mode': mission.auto_mode}
+
+
+@app.post("/api/telemetry")
+async def post_telemetry(body: dict):
+    data  = body.get('data', {})
+    abs_x = body.get('abs_x', 0.0)
+    abs_y = body.get('abs_y', 0.0)
+    path  = body.get('path', {})
+
+    mission.update_from_telemetry(data, abs_x, abs_y)
+    if path:
+        mission.update_path(path)
+
+    await mission.broadcast('dashboard', {
+        'type':     'telemetry',
+        'telemetry': mission.latest_telemetry,
+        'path':     mission.path_data,
+    })
+
+    return {'ok': True}
+
+
+@app.post("/api/event")
+async def post_event(body: dict):
+    event = body.get('event', '')
+    raw   = body.get('raw', '')
+    mission.pi_last_seen = time.time()
+
+    if event == 'obstacle':
+        mission.obstacle_active = True
+        mission.add_alert('warning', 'Obstacle detected — auto-reversing')
+    elif event == 'clear':
+        mission.obstacle_active = False
+    elif event == 'watchdog':
+        mission.add_alert('critical', 'ESP32 watchdog: Pi heartbeat missed')
+    elif event == 'ready':
+        mission.add_alert('info', 'ESP32 rover ready')
+
+    await mission.broadcast('dashboard', {
+        'type':  'event',
+        'event': event,
+        'raw':   raw,
+        'alert': mission.alerts[0] if mission.alerts else None,
+    })
+
+    return {'ok': True}
+
+
+@app.post("/api/victim")
+async def post_victim(body: dict):
+    x    = body.get('x', 0.0)
+    y    = body.get('y', 0.0)
+    conf = body.get('confidence', 0.0)
+    mission.pi_last_seen = time.time()
+    alert = mission.add_victim(x, y, conf)
+
+    await mission.broadcast('dashboard', {
+        'type':    'victim',
+        'x':       x,
+        'y':       y,
+        'confidence': conf,
+        'count':   mission.victim_count,
+        'alert':   alert,
+    })
+
+    return {'ok': True}
 
 
 @app.post("/api/mode")
@@ -639,7 +715,7 @@ async def start_periodic_broadcast():
                 await mission.broadcast('dashboard', {
                     'type':   'heartbeat',
                     'status': {
-                        'pi_connected':    mission.pi_connected,
+                        'pi_connected':    _pi_connected(),
                         'mission_active':  mission.mission_active,
                         'rover_state':     mission.rover_state,
                         'auto_mode':       mission.auto_mode,
