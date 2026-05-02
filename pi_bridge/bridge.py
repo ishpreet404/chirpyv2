@@ -74,6 +74,7 @@ except ImportError:
 
 SERIAL_PORT      = os.getenv("SERIAL_PORT", "/dev/serial0")
 SERIAL_BAUD      = 115200
+SERIAL_FRAME_START = ">"
 SERIAL_RECONNECT_BASE_S = 1.0
 SERIAL_RECONNECT_MAX_S  = 8.0
 SERIAL_ERROR_LOG_THROTTLE_S = 2.0
@@ -464,7 +465,7 @@ class SerialBridge:
             logging.warning(f"Ignoring unsupported command: {cmd}")
             return
         with self._lock:
-            self.cmd_queue.append(cmd + '\n')
+            self.cmd_queue.append(f"{SERIAL_FRAME_START}{cmd}\n")
 
     def _flush_commands(self):
         """Send all queued commands — call from read loop thread."""
