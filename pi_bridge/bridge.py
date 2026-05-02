@@ -74,6 +74,9 @@ except ImportError:
 
 SERIAL_PORT      = os.getenv("SERIAL_PORT", "/dev/serial0")
 SERIAL_BAUD      = 115200
+SERIAL_RECONNECT_BASE_S = 1.0
+SERIAL_RECONNECT_MAX_S  = 8.0
+SERIAL_ERROR_LOG_THROTTLE_S = 2.0
 BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL", "ws://localhost:8000/ws/rover")
 BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL", "http://localhost:8000")
 CAMERA_INDEX     = 0
@@ -394,6 +397,8 @@ class SerialBridge:
         self.dropped_pkts   = 0
         self.total_pkts     = 0
         self._lock          = threading.Lock()
+        self._reconnect_delay = SERIAL_RECONNECT_BASE_S
+        self._last_error_t  = 0.0
 
         # Callbacks registered by caller
         self.on_packet  = None   # callable(dict)
@@ -401,19 +406,56 @@ class SerialBridge:
 
     def connect(self) -> bool:
         try:
+            if self.ser and self.ser.is_open:
+                self.connected = True
+                return True
             self.ser = serial.Serial(
                 SERIAL_PORT, SERIAL_BAUD,
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
-                timeout=1.0
+                timeout=1.0,
+                write_timeout=1.0
             )
+            try:
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
+            except Exception:
+                pass
             self.connected = True
+            self.last_pkt_seq = -1
+            self.last_hb_sent = 0.0
             logging.info(f"Serial connected: {SERIAL_PORT} @ {SERIAL_BAUD}")
             return True
         except serial.SerialException as e:
             logging.error(f"Serial connect failed: {e}")
             return False
+
+    def _set_disconnected(self):
+        self.connected = False
+        if self.ser:
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+        self.ser = None
+
+    def _handle_serial_error(self, where: str, err: Exception):
+        now = time.time()
+        if now - self._last_error_t >= SERIAL_ERROR_LOG_THROTTLE_S:
+            logging.error(f"Serial {where} error: {err}. Reconnecting...")
+            self._last_error_t = now
+        self._set_disconnected()
+
+    def _connect_with_backoff(self) -> bool:
+        if self.connect():
+            self._reconnect_delay = SERIAL_RECONNECT_BASE_S
+            return True
+        delay = self._reconnect_delay
+        logging.warning(f"Serial not available. Retrying in {delay:.1f}s")
+        time.sleep(delay)
+        self._reconnect_delay = min(self._reconnect_delay * 2, SERIAL_RECONNECT_MAX_S)
+        return False
 
     def send_command(self, cmd: str):
         """Thread-safe command enqueue."""
@@ -426,31 +468,35 @@ class SerialBridge:
 
     def _flush_commands(self):
         """Send all queued commands — call from read loop thread."""
+        if not self.ser or not self.connected:
+            return
         with self._lock:
             while self.cmd_queue:
                 cmd = self.cmd_queue.popleft()
                 try:
                     self.ser.write(cmd.encode('ascii'))
                 except serial.SerialException as e:
-                    logging.error(f"Serial write error: {e}")
+                    self._handle_serial_error("write", e)
+                    break
 
     def read_loop(self):
         """
         Blocking read loop — run in dedicated thread.
         Processes incoming lines, verifies CRC, detects gaps, fires callbacks.
         """
-        if not self.connected:
-            logging.error("read_loop called before connect()")
-            return
-
         buf = ""
         while True:
+            if not self.connected:
+                if not self._connect_with_backoff():
+                    continue
+                buf = ""
             try:
-                raw = self.ser.read(256).decode('utf-8', errors='ignore')
+                raw_bytes = self.ser.read(256)
             except serial.SerialException as e:
-                logging.error(f"Serial read error: {e}")
-                time.sleep(1)
+                self._handle_serial_error("read", e)
                 continue
+
+            raw = raw_bytes.decode('utf-8', errors='ignore') if raw_bytes else ""
 
             buf += raw
             while '\n' in buf:
@@ -524,8 +570,8 @@ class SerialBridge:
                     self.last_hb_sent = now
                     try:
                         self.ser.write(b'P\n')
-                    except serial.SerialException:
-                        pass
+                    except serial.SerialException as e:
+                        self._handle_serial_error("heartbeat", e)
 
 # ─── MJPEG Camera Stream ──────────────────────────────────────────────────────
 
@@ -785,7 +831,7 @@ class RoverBridge:
 
         # Start serial read thread
         if not self.serial.connect():
-            logging.warning("Serial not connected — running in simulation mode")
+            logging.warning("Serial not connected — will retry in background")
         serial_thread = threading.Thread(
             target=self.serial.read_loop, daemon=True
         )
