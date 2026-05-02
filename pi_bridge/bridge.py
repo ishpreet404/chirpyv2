@@ -52,6 +52,17 @@ import serial
 import websockets
 from aiohttp import web
 
+try:
+    from dotenv import load_dotenv
+
+    _env_path = os.path.join(os.path.dirname(__file__), "..", "localenv")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
+
 # ─── Try importing OpenCV (graceful fallback if not installed) ───────────────
 try:
     import cv2
@@ -62,10 +73,10 @@ except ImportError:
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-SERIAL_PORT      = "/dev/serial0"  # Pi UART0 — GPIO 14/15 (maps to ttyS0 here)
+SERIAL_PORT      = os.getenv("SERIAL_PORT", "/dev/serial0")
 SERIAL_BAUD      = 115200
-BACKEND_WS_URL   = "ws://localhost:8000/ws/rover"
-BACKEND_HTTP_URL = "http://localhost:8000"
+BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL", "ws://localhost:8000/ws/rover")
+BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL", "http://localhost:8000")
 CAMERA_INDEX     = 0
 CAMERA_PORT      = 8081             # MJPEG stream port
 HEARTBEAT_INTERVAL_S = 2.0          # Send P command every 2s

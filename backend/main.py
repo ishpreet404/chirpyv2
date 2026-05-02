@@ -15,6 +15,9 @@ Deps: pip install fastapi uvicorn websockets aiohttp python-dotenv
 import asyncio
 import json
 import logging
+import math
+import os
+import random
 import time
 from collections import deque
 from datetime import datetime
@@ -25,18 +28,51 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 import aiohttp
 
+try:
+    from dotenv import load_dotenv
+
+    _env_path = os.path.join(os.path.dirname(__file__), "..", "localenv")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-PI_BRIDGE_URL    = "http://raspberry-pi.local:8081"   # adjust to Pi IP
-PI_BRIDGE_WS     = "ws://raspberry-pi.local:8081"     # if Pi has WS
+PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", "http://raspberry-pi.local:8081")
+PI_BRIDGE_WS     = os.getenv("PI_BRIDGE_WS", "ws://raspberry-pi.local:8081")
 MAX_TELEMETRY_HISTORY = 2000     # packets kept in memory
 MAX_ALERTS       = 200
 
 FIRMWARE_PROFILE = "chirpy_v2_legacy"
 SUPPORTED_COMMANDS = ("F", "B", "L", "R", "S")
+SUPPORTED_MODES = ("square", "circle", "random")
+
+WHEEL_VELOCITY_CMS = 20.0
+PIVOT_RATE_DEGS = 286.4
+
+MODE_PRESETS = {
+    "square": {
+        "side_cm": 60.0,
+        "turn_deg": 90.0,
+        "pause_s": 0.2,
+    },
+    "circle": {
+        "radius_cm": 30.0,
+        "step_deg": 10.0,
+        "pause_s": 0.05,
+    },
+    "random": {
+        "steps": 20,
+        "pause_s": 0.2,
+    },
+}
 CAPABILITIES = {
     "profile": FIRMWARE_PROFILE,
     "commands": list(SUPPORTED_COMMANDS),
+    "modes": list(SUPPORTED_MODES),
     "auto_mode": False,
     "ping": False,
     "victim_notify": False,
@@ -78,6 +114,8 @@ class MissionState:
         self.auto_mode         = False
         self.obstacle_active   = False
         self.victim_count      = 0
+        self.motion_active     = False
+        self.motion_mode       : str | None = None
         self._lock             = asyncio.Lock()
 
         # WebSocket clients: {'rover': [ws], 'dashboard': [ws]}
@@ -154,6 +192,149 @@ class MissionState:
 
 
 mission = MissionState()
+
+mode_task: asyncio.Task | None = None
+mode_cancel: asyncio.Event | None = None
+
+
+async def _sleep_with_cancel(seconds: float, cancel_event: asyncio.Event) -> bool:
+    try:
+        await asyncio.wait_for(cancel_event.wait(), timeout=seconds)
+        return True
+    except asyncio.TimeoutError:
+        return False
+
+
+async def _command_for_duration(cmd: str, duration_s: float, cancel_event: asyncio.Event) -> bool:
+    await _forward_command(cmd)
+    if await _sleep_with_cancel(duration_s, cancel_event):
+        return True
+    await _forward_command("S")
+    return await _sleep_with_cancel(0.15, cancel_event)
+
+
+async def _stop_motion_mode(reason: str = "stopped"):
+    global mode_task, mode_cancel
+
+    if mode_cancel:
+        mode_cancel.set()
+
+    if mode_task:
+        try:
+            await mode_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            log.warning(f"Motion mode error: {exc}")
+
+    mode_task = None
+    mode_cancel = None
+
+    if mission.motion_active or mission.motion_mode:
+        mission.motion_active = False
+        mission.motion_mode = None
+        mission.add_alert("info", f"Motion mode {reason}")
+        await mission.broadcast("dashboard", {
+            "type": "mode",
+            "status": {
+                "motion_active": False,
+                "motion_mode": None,
+            },
+        })
+
+    await _forward_command("S")
+
+
+async def _run_motion_mode(mode: str, cancel_event: asyncio.Event):
+    preset = MODE_PRESETS.get(mode, {})
+    try:
+        if mode == "square":
+            side_cm = float(preset.get("side_cm", 60.0))
+            turn_deg = float(preset.get("turn_deg", 90.0))
+            pause_s = float(preset.get("pause_s", 0.2))
+            forward_time = side_cm / WHEEL_VELOCITY_CMS
+            turn_time = turn_deg / PIVOT_RATE_DEGS
+
+            for _ in range(4):
+                if await _command_for_duration("F", forward_time, cancel_event):
+                    return
+                if await _sleep_with_cancel(pause_s, cancel_event):
+                    return
+                if await _command_for_duration("R", turn_time, cancel_event):
+                    return
+                if await _sleep_with_cancel(pause_s, cancel_event):
+                    return
+
+        elif mode == "circle":
+            radius_cm = float(preset.get("radius_cm", 30.0))
+            step_deg = float(preset.get("step_deg", 10.0))
+            pause_s = float(preset.get("pause_s", 0.05))
+            steps = max(3, int(360.0 / step_deg))
+            step_distance = 2.0 * math.pi * radius_cm * (step_deg / 360.0)
+            forward_time = step_distance / WHEEL_VELOCITY_CMS
+            turn_time = step_deg / PIVOT_RATE_DEGS
+
+            for _ in range(steps):
+                if await _command_for_duration("F", forward_time, cancel_event):
+                    return
+                if await _sleep_with_cancel(pause_s, cancel_event):
+                    return
+                if await _command_for_duration("R", turn_time, cancel_event):
+                    return
+                if await _sleep_with_cancel(pause_s, cancel_event):
+                    return
+
+        elif mode == "random":
+            steps = int(preset.get("steps", 20))
+            pause_s = float(preset.get("pause_s", 0.2))
+            choices = ["F", "F", "F", "L", "R", "B"]
+
+            for _ in range(steps):
+                cmd = random.choice(choices)
+                if cmd in ("L", "R"):
+                    duration = random.uniform(0.2, 0.6)
+                else:
+                    duration = random.uniform(0.4, 1.2)
+
+                if await _command_for_duration(cmd, duration, cancel_event):
+                    return
+                if await _sleep_with_cancel(pause_s, cancel_event):
+                    return
+    finally:
+        mission.motion_active = False
+        mission.motion_mode = None
+        await mission.broadcast("dashboard", {
+            "type": "mode",
+            "status": {
+                "motion_active": False,
+                "motion_mode": None,
+            },
+        })
+        await _forward_command("S")
+
+
+async def _start_motion_mode(mode: str):
+    global mode_task, mode_cancel
+
+    if mode not in SUPPORTED_MODES:
+        raise ValueError(f"Unknown mode: {mode}")
+
+    await _stop_motion_mode("cancelled")
+
+    mode_cancel = asyncio.Event()
+    mission.motion_active = True
+    mission.motion_mode = mode
+    mission.add_alert("info", f"Motion mode started: {mode}")
+
+    await mission.broadcast("dashboard", {
+        "type": "mode",
+        "status": {
+            "motion_active": True,
+            "motion_mode": mode,
+        },
+    })
+
+    mode_task = asyncio.create_task(_run_motion_mode(mode, mode_cancel))
 
 # ─── WebSocket: Pi Bridge → Backend ─────────────────────────────────────────
 
@@ -269,6 +450,8 @@ async def ws_dashboard(websocket: WebSocket):
             'auto_mode':       mission.auto_mode,
             'obstacle_active': mission.obstacle_active,
             'victim_count':    mission.victim_count,
+            'motion_active':   mission.motion_active,
+            'motion_mode':     mission.motion_mode,
             'capabilities':    CAPABILITIES,
         },
     })
@@ -287,6 +470,18 @@ async def ws_dashboard(websocket: WebSocket):
                     # Forward to Pi bridge via HTTP
                     asyncio.create_task(_forward_command(cmd))
                     await websocket.send_json({'type': 'cmd_sent', 'command': cmd})
+            elif msg.get('type') == 'mode':
+                action = msg.get('action', 'start')
+                mode = msg.get('mode', '')
+                if action == 'stop':
+                    await _stop_motion_mode("stopped")
+                    await websocket.send_json({'type': 'mode', 'status': {'motion_active': False, 'motion_mode': None}})
+                else:
+                    try:
+                        await _start_motion_mode(mode)
+                        await websocket.send_json({'type': 'mode', 'status': {'motion_active': True, 'motion_mode': mode}})
+                    except ValueError as exc:
+                        await websocket.send_json({'type': 'mode_error', 'error': str(exc)})
 
     except WebSocketDisconnect:
         log.info("Dashboard client disconnected")
@@ -324,6 +519,8 @@ async def get_status():
         'auto_mode':       mission.auto_mode,
         'obstacle_active': mission.obstacle_active,
         'victim_count':    mission.victim_count,
+        'motion_active':   mission.motion_active,
+        'motion_mode':     mission.motion_mode,
         'total_dist_cm':   mission.path_data.get('total_dist_cm', 0),
         'latest_telemetry': mission.latest_telemetry,
         'capabilities':    CAPABILITIES,
@@ -371,6 +568,22 @@ async def post_command(body: dict):
     return {'sent': cmd, 'auto_mode': mission.auto_mode}
 
 
+@app.post("/api/mode")
+async def post_mode(body: dict):
+    action = body.get('action', 'start')
+    mode = body.get('mode', '')
+
+    if action == 'stop':
+        await _stop_motion_mode("stopped")
+        return {'motion_active': False, 'motion_mode': None}
+
+    if mode not in SUPPORTED_MODES:
+        raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
+
+    await _start_motion_mode(mode)
+    return {'motion_active': True, 'motion_mode': mode}
+
+
 @app.post("/api/mission/start")
 async def start_mission():
     mission.mission_active  = True
@@ -382,6 +595,7 @@ async def start_mission():
 @app.post("/api/mission/stop")
 async def stop_mission():
     mission.mission_active = False
+    await _stop_motion_mode("stopped")
     await _forward_command('S')
     mission.add_alert('info', 'Mission stopped via API')
     return {'status': 'stopped'}
@@ -431,6 +645,8 @@ async def start_periodic_broadcast():
                         'auto_mode':       mission.auto_mode,
                         'obstacle_active': mission.obstacle_active,
                         'victim_count':    mission.victim_count,
+                        'motion_active':   mission.motion_active,
+                        'motion_mode':     mission.motion_mode,
                         'server_ts':       time.time(),
                         'capabilities':    CAPABILITIES,
                     },

@@ -28,6 +28,8 @@ export function useRoverWebSocket() {
 		auto_mode: false,
 		obstacle_active: false,
 		victim_count: 0,
+		motion_active: false,
+		motion_mode: null,
 		capabilities: { commands: DEFAULT_COMMANDS },
 	});
 
@@ -102,6 +104,15 @@ export function useRoverWebSocket() {
 					return;
 				}
 
+				if (msg.type === "mode" && msg.status) {
+					setStatus((prev) => ({
+						...prev,
+						motion_active: msg.status.motion_active,
+						motion_mode: msg.status.motion_mode,
+					}));
+					return;
+				}
+
 				if (msg.type === "heartbeat" && msg.status) {
 					setStatus((prev) => ({
 						...prev,
@@ -141,5 +152,40 @@ export function useRoverWebSocket() {
 		[status],
 	);
 
-	return { connected, telemetry, pathData, alerts, status, sendCommand };
+	const sendMode = useCallback(
+		(mode) => {
+			if (!mode) return;
+			const allowed = status?.capabilities?.modes || [];
+			const action = mode === "stop" ? "stop" : "start";
+			if (action === "start" && !allowed.includes(mode)) return;
+			const payload =
+				action === "stop"
+					? { type: "mode", action }
+					: { type: "mode", action, mode };
+
+			const ws = wsRef.current;
+			if (ws && ws.readyState === WebSocket.OPEN) {
+				ws.send(JSON.stringify(payload));
+				return;
+			}
+
+			fetch(`${httpBaseRef.current}/api/mode`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(action === "stop" ? { action: "stop" } : { mode }),
+			}).catch(() => {});
+		},
+		[status],
+	);
+
+	return {
+		connected,
+		telemetry,
+		pathData,
+		alerts,
+		status,
+		sendCommand,
+		sendMode,
+		httpBase: httpBaseRef.current,
+	};
 }

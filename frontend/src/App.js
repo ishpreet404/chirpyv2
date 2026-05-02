@@ -6,15 +6,12 @@ import React, {
 	useMemo,
 } from "react";
 import {
-	LineChart,
-	Line,
-	XAxis,
-	YAxis,
+	AreaChart,
+	Area,
 	CartesianGrid,
 	Tooltip,
 	ResponsiveContainer,
-	AreaChart,
-	Area,
+	YAxis,
 } from "recharts";
 import { useRoverWebSocket } from "./hooks/useRoverWebSocket";
 
@@ -84,11 +81,16 @@ const styles = {
 		overflow: "hidden",
 		minHeight: 0,
 	},
+	gridMobile: {
+		gridTemplateColumns: "1fr",
+		gridTemplateRows: "auto",
+	},
 	panel: {
 		background: C.panel,
 		overflow: "hidden",
 		display: "flex",
 		flexDirection: "column",
+		minHeight: 0,
 	},
 	panelHeader: {
 		padding: "8px 14px",
@@ -212,8 +214,8 @@ function PathCanvas({ pathData, telemetry }) {
 
 		if (allPoints.length === 0) {
 			// Draw origin cross only
-			const cx = W / 2,
-				cy = H / 2;
+			const cx = W / 2;
+			const cy = H / 2;
 			ctx.strokeStyle = C.border;
 			ctx.lineWidth = 1;
 			ctx.beginPath();
@@ -247,7 +249,7 @@ function PathCanvas({ pathData, telemetry }) {
 		const scaleY = (H - PAD * 2) / rangeY;
 		const scale = Math.min(scaleX, scaleY);
 		const offX = PAD + (W - PAD * 2 - rangeX * scale) / 2 - minX * scale;
-		const offY = PAD + (H - PAD * 2 - rangeY * scale) / 2 - minY * scale;
+		const offY = PAD + (W - PAD * 2 - rangeY * scale) / 2 - minY * scale;
 
 		const toScreen = (x, y) => [offX + x * scale, H - (offY + y * scale)];
 
@@ -286,7 +288,11 @@ function PathCanvas({ pathData, telemetry }) {
 			ctx.beginPath();
 			seg.forEach((pt, i) => {
 				const [sx, sy] = toScreen(pt.x, pt.y);
-				i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+				if (i === 0) {
+					ctx.moveTo(sx, sy);
+				} else {
+					ctx.lineTo(sx, sy);
+				}
 			});
 			ctx.stroke();
 			ctx.globalAlpha = 1;
@@ -295,7 +301,6 @@ function PathCanvas({ pathData, telemetry }) {
 		// Victims
 		victims.forEach((v) => {
 			const [sx, sy] = toScreen(v.x, v.y);
-			// Pulsing marker effect (just draw a star-ish shape)
 			ctx.fillStyle = C.yellow;
 			ctx.strokeStyle = C.yellow;
 			ctx.lineWidth = 1.5;
@@ -414,8 +419,41 @@ function ControlPad({ sendCommand, status, supportsAuto }) {
 	});
 
 	const [pressed, setPressed] = useState(null);
+	const repeatRef = useRef(null);
+	const activeCmdRef = useRef(null);
 
-	const handleKey = useCallback(
+	const stopRepeat = useCallback(
+		(sendStop = true) => {
+			if (repeatRef.current) {
+				clearInterval(repeatRef.current);
+				repeatRef.current = null;
+			}
+			activeCmdRef.current = null;
+			setPressed(null);
+			if (sendStop) sendCommand("S");
+		},
+		[sendCommand],
+	);
+
+	const startRepeat = useCallback(
+		(cmd) => {
+			if (!cmd) return;
+			if (cmd === "S") {
+				stopRepeat(false);
+				sendCommand("S");
+				return;
+			}
+			if (activeCmdRef.current === cmd) return;
+			stopRepeat(false);
+			activeCmdRef.current = cmd;
+			setPressed(cmd);
+			sendCommand(cmd);
+			repeatRef.current = setInterval(() => sendCommand(cmd), 200);
+		},
+		[sendCommand, stopRepeat],
+	);
+
+	const handleKeyDown = useCallback(
 		(e) => {
 			const map = {
 				ArrowUp: "F",
@@ -426,16 +464,39 @@ function ControlPad({ sendCommand, status, supportsAuto }) {
 			};
 			if (map[e.key]) {
 				e.preventDefault();
-				sendCommand(map[e.key]);
+				startRepeat(map[e.key]);
 			}
 		},
-		[sendCommand],
+		[startRepeat],
+	);
+
+	const handleKeyUp = useCallback(
+		(e) => {
+			const map = {
+				ArrowUp: true,
+				ArrowDown: true,
+				ArrowLeft: true,
+				ArrowRight: true,
+				" ": true,
+			};
+			if (map[e.key]) {
+				e.preventDefault();
+				stopRepeat(true);
+			}
+		},
+		[stopRepeat],
 	);
 
 	useEffect(() => {
-		window.addEventListener("keydown", handleKey);
-		return () => window.removeEventListener("keydown", handleKey);
-	}, [handleKey]);
+		window.addEventListener("keydown", handleKeyDown);
+		window.addEventListener("keyup", handleKeyUp);
+		return () => {
+			window.removeEventListener("keydown", handleKeyDown);
+			window.removeEventListener("keyup", handleKeyUp);
+		};
+	}, [handleKeyDown, handleKeyUp]);
+
+	useEffect(() => () => stopRepeat(false), [stopRepeat]);
 
 	return (
 		<div>
@@ -459,12 +520,12 @@ function ControlPad({ sendCommand, status, supportsAuto }) {
 							gridColumn: btns.find((b) => b.cmd === cmd)?.col,
 							transform: pressed === cmd ? "scale(0.93)" : "scale(1)",
 						}}
-						onMouseDown={() => {
-							setPressed(cmd);
-							sendCommand(cmd);
-						}}
-						onMouseUp={() => setPressed(null)}
-						onMouseLeave={() => setPressed(null)}
+						onMouseDown={() => startRepeat(cmd)}
+						onMouseUp={() => stopRepeat(true)}
+						onMouseLeave={() => stopRepeat(true)}
+						onTouchStart={() => startRepeat(cmd)}
+						onTouchEnd={() => stopRepeat(true)}
+						onTouchCancel={() => stopRepeat(true)}
 					>
 						{label}
 					</button>
@@ -591,11 +652,11 @@ function TelemetryChart({ history }) {
 	);
 }
 
-// ─── Alerts panel ─────────────────────────────────────────────────────────────
+// ─── Alerts panel ───────────────────────────────────────────────────────────
 
 function AlertsPanel({ alerts }) {
 	return (
-		<div style={{ ...styles.panel, gridColumn: "3 / 4", gridRow: "1 / 3" }}>
+		<div style={styles.panel}>
 			<div style={styles.panelHeader}>
 				ALERTS
 				<span style={{ float: "right", color: C.red }}>
@@ -622,7 +683,13 @@ function AlertsPanel({ alerts }) {
 							padding: "6px 8px",
 							marginBottom: 4,
 							borderRadius: 4,
-							borderLeft: `3px solid ${a.level === "critical" ? C.red : a.level === "warning" ? C.yellow : C.blue}`,
+							borderLeft: `3px solid ${
+								a.level === "critical"
+									? C.red
+									: a.level === "warning"
+										? C.yellow
+										: C.blue
+							}`,
 							background: C.surface,
 						}}
 					>
@@ -655,15 +722,71 @@ function AlertsPanel({ alerts }) {
 	);
 }
 
-// ─── Main app ─────────────────────────────────────────────────────────────────
+// ─── Camera panel ──────────────────────────────────────────────────────────
+
+function CameraPanel({ src }) {
+	const [hasError, setHasError] = useState(false);
+
+	useEffect(() => {
+		setHasError(false);
+	}, [src]);
+
+	return (
+		<div style={styles.panel}>
+			<div style={styles.panelHeader}>CAMERA</div>
+			<div
+				style={{
+					...styles.panelBody,
+					padding: 0,
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+				}}
+			>
+				{src && !hasError ? (
+					<img
+						src={src}
+						alt="Rover camera"
+						style={{ width: "100%", height: "100%", objectFit: "cover" }}
+						onError={() => setHasError(true)}
+					/>
+				) : (
+					<div style={{ color: C.dimText, fontSize: 11 }}>
+						Camera stream unavailable
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+// ─── Main app ───────────────────────────────────────────────────────────────
 
 function App() {
-	const { connected, telemetry, pathData, alerts, status, sendCommand } =
-		useRoverWebSocket();
+	const {
+		connected,
+		telemetry,
+		pathData,
+		alerts,
+		status,
+		sendCommand,
+		sendMode,
+		httpBase,
+	} = useRoverWebSocket();
 	const [telHistory, setTelHistory] = useState([]);
 	const [elapsed, setElapsed] = useState(0);
+	const [isMobile, setIsMobile] = useState(false);
 	const startRef = useRef(null);
 	const supportsAuto = Boolean(status?.capabilities?.commands?.includes("A"));
+	const supportedModes = status?.capabilities?.modes || [];
+	const supportsModes = supportedModes.length > 0;
+
+	useEffect(() => {
+		const onResize = () => setIsMobile(window.innerWidth < 900);
+		onResize();
+		window.addEventListener("resize", onResize);
+		return () => window.removeEventListener("resize", onResize);
+	}, []);
 
 	// Track telemetry history for charts
 	useEffect(() => {
@@ -722,6 +845,11 @@ function App() {
 							⚠ OBSTACLE
 						</Pill>
 					)}
+					{status.motion_active && status.motion_mode && (
+						<Pill color={C.accent} bg={C.accentDim}>
+							MODE {String(status.motion_mode).toUpperCase()}
+						</Pill>
+					)}
 					{supportsAuto && status.auto_mode && (
 						<Pill color={C.accent} bg={C.accentDim}>
 							AUTO
@@ -777,14 +905,14 @@ function App() {
 			</div>
 
 			{/* Main grid */}
-			<div style={styles.grid}>
+			<div style={{ ...styles.grid, ...(isMobile ? styles.gridMobile : null) }}>
 				{/* Left panel: Telemetry + Controls */}
 				<div
 					style={{
 						...styles.panel,
 						gridColumn: "1",
-						gridRow: "1 / 3",
-						borderRight: `1px solid ${C.border}`,
+						gridRow: isMobile ? "1" : "1 / 3",
+						borderRight: isMobile ? "none" : `1px solid ${C.border}`,
 					}}
 				>
 					<div style={styles.panelHeader}>TELEMETRY</div>
@@ -885,11 +1013,89 @@ function App() {
 								supportsAuto={supportsAuto}
 							/>
 						</div>
+
+						{supportsModes && (
+							<div style={{ marginTop: 18 }}>
+								<div
+									style={{
+										...styles.panelHeader,
+										padding: "6px 0",
+										marginBottom: 10,
+									}}
+								>
+									PATH MODES
+								</div>
+								<div
+									style={{
+										display: "grid",
+										gridTemplateColumns: "1fr 1fr",
+										gap: 6,
+									}}
+								>
+									{supportedModes.map((mode) => (
+										<button
+											key={mode}
+											onClick={() => sendMode(mode)}
+											style={{
+												padding: "6px 0",
+												background:
+													status.motion_mode === mode && status.motion_active
+														? C.accentDim
+														: C.surface,
+												border: `1px solid ${
+													status.motion_mode === mode && status.motion_active
+														? C.accent
+														: C.border
+												}`,
+												borderRadius: 6,
+												color:
+													status.motion_mode === mode && status.motion_active
+														? C.accent
+														: C.dimText,
+												fontSize: 11,
+												cursor: "pointer",
+												fontFamily: "inherit",
+												letterSpacing: 1,
+												fontWeight: 600,
+												textTransform: "uppercase",
+											}}
+										>
+											{mode}
+										</button>
+									))}
+									<button
+										onClick={() => sendMode("stop")}
+										style={{
+											gridColumn: "1 / 3",
+											padding: "6px 0",
+											background: C.surface,
+											border: `1px solid ${C.border}`,
+											borderRadius: 6,
+											color: C.red,
+											fontSize: 11,
+											cursor: "pointer",
+											fontFamily: "inherit",
+											letterSpacing: 1,
+											fontWeight: 600,
+											textTransform: "uppercase",
+										}}
+									>
+										STOP MODE
+									</button>
+								</div>
+							</div>
+						)}
 					</div>
 				</div>
 
 				{/* Center: Path visualization */}
-				<div style={{ ...styles.panel, gridColumn: "2", gridRow: "1" }}>
+				<div
+					style={{
+						...styles.panel,
+						gridColumn: isMobile ? "1" : "2",
+						gridRow: isMobile ? "2" : "1",
+					}}
+				>
 					<div style={styles.panelHeader}>
 						PATH VISUALIZATION
 						<span style={{ float: "right", color: C.dimText, fontWeight: 400 }}>
@@ -903,7 +1109,13 @@ function App() {
 				</div>
 
 				{/* Bottom: Charts */}
-				<div style={{ ...styles.panel, gridColumn: "2", gridRow: "2" }}>
+				<div
+					style={{
+						...styles.panel,
+						gridColumn: isMobile ? "1" : "2",
+						gridRow: isMobile ? "3" : "2",
+					}}
+				>
 					<div style={styles.panelHeader}>SENSOR GRAPHS — LAST 60 PACKETS</div>
 					<div style={{ flex: 1, minHeight: 0 }}>
 						<TelemetryChart history={telHistory} />
@@ -911,7 +1123,24 @@ function App() {
 				</div>
 
 				{/* Right: Alerts */}
-				<AlertsPanel alerts={alerts} />
+				<div
+					style={{
+						gridColumn: isMobile ? "1" : "3 / 4",
+						gridRow: isMobile ? "4" : "1 / 2",
+					}}
+				>
+					<AlertsPanel alerts={alerts} />
+				</div>
+
+				{/* Right: Camera */}
+				<div
+					style={{
+						gridColumn: isMobile ? "1" : "3 / 4",
+						gridRow: isMobile ? "5" : "2 / 3",
+					}}
+				>
+					<CameraPanel src={httpBase ? `${httpBase}/api/camera/stream` : ""} />
+				</div>
 			</div>
 		</div>
 	);
