@@ -39,10 +39,23 @@ try:
 except ImportError:
     pass
 
+# Custom fallback localenv parser in case python-dotenv is missing
+_custom_env_path = os.path.join(os.path.dirname(__file__), "..", "localenv")
+if os.path.exists(_custom_env_path):
+    with open(_custom_env_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"\'')
+                if k not in os.environ:
+                    os.environ[k] = v
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", "http://raspberry-pi.local:8081").rstrip("/")
-PI_BRIDGE_WS     = os.getenv("PI_BRIDGE_WS", "ws://raspberry-pi.local:8081")
+PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", "http://192.168.1.11:8081").strip('"\'').rstrip("/")
+PI_BRIDGE_WS     = os.getenv("PI_BRIDGE_WS", "ws://192.168.1.11:8081")
 MAX_TELEMETRY_HISTORY = 2000     # packets kept in memory
 MAX_ALERTS       = 200
 
