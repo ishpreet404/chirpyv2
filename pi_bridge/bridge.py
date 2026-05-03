@@ -56,7 +56,7 @@ try:
 
     _env_path = os.path.join(os.path.dirname(__file__), "..", "localenv")
     if os.path.exists(_env_path):
-        load_dotenv(_env_path)
+        load_dotenv(_env_path, verbose=False)
     else:
         load_dotenv()
 except ImportError:
@@ -78,8 +78,8 @@ SERIAL_FRAME_START = ">"
 SERIAL_RECONNECT_BASE_S = 1.0
 SERIAL_RECONNECT_MAX_S  = 8.0
 SERIAL_ERROR_LOG_THROTTLE_S = 2.0
-BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL", "ws://localhost:8000/ws/rover")
-BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL", "http://localhost:8000")
+BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL", "ws://192.168.1.7:8000/ws/rover")
+BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL", "http://192.168.1.7:8000")
 CAMERA_INDEX     = 0
 CAMERA_PORT      = 8081             # MJPEG stream port
 HEARTBEAT_INTERVAL_S = 2.0          # Send P command every 2s
@@ -486,17 +486,30 @@ class SerialBridge:
         Processes incoming lines, verifies CRC, detects gaps, fires callbacks.
         """
         buf = ""
+        empty_reads = 0
         while True:
             if not self.connected:
                 if not self._connect_with_backoff():
                     continue
                 buf = ""
+                empty_reads = 0
             try:
                 raw_bytes = self.ser.read(256)
             except serial.SerialException as e:
                 self._handle_serial_error("read", e)
+                empty_reads = 0
                 continue
 
+            # Detect device disconnection (empty reads indicate no data from device)
+            if not raw_bytes:
+                empty_reads += 1
+                if empty_reads > 10:  # ~1 second of empty reads @ 100ms timeout
+                    logging.warning(f"Serial device unresponsive ({empty_reads} empty reads) — reconnecting")
+                    self._set_disconnected()
+                    empty_reads = 0
+                continue
+            
+            empty_reads = 0
             raw = raw_bytes.decode('utf-8', errors='ignore') if raw_bytes else ""
 
             buf += raw
@@ -885,6 +898,10 @@ if __name__ == '__main__':
             ), mode='w'),
         ]
     )
+
+    logging.info(f"Backend HTTP URL: {BACKEND_HTTP_URL}")
+    logging.info(f"Backend WS URL: {BACKEND_WS_URL}")
+    logging.info(f"Serial port: {SERIAL_PORT}")
 
     bridge = RoverBridge()
     try:
