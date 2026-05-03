@@ -61,7 +61,16 @@ MAX_ALERTS       = 200
 
 FIRMWARE_PROFILE = "chirpy_v2_legacy"
 SUPPORTED_COMMANDS = ("F", "B", "L", "R", "S")
-SUPPORTED_MODES = ("square", "circle", "random")
+SUPPORTED_MODES = (
+    "square",
+    "circle",
+    "random",
+    "follow-path",
+    "search-grid",
+    "return-to-home",
+    "hold-position",
+    "emergency-stop",
+)
 
 WHEEL_VELOCITY_CMS = 20.0
 PIVOT_RATE_DEGS = 286.4
@@ -80,6 +89,24 @@ MODE_PRESETS = {
     "random": {
         "steps": 20,
         "pause_s": 0.2,
+    },
+    "follow-path": {
+        "pause_s": 0.1,
+    },
+    "search-grid": {
+        "cell_cm": 60.0,
+        "rows": 4,
+        "cols": 4,
+        "pause_s": 0.1,
+    },
+    "return-to-home": {
+        "pause_s": 0.1,
+    },
+    "hold-position": {
+        "pause_s": 0.1,
+    },
+    "emergency-stop": {
+        "pause_s": 0.1,
     },
 }
 CAPABILITIES = {
@@ -118,6 +145,14 @@ class MissionState:
             'obstacles':     [],
             'victims':       [],
             'total_dist_cm': 0.0,
+            'route': {
+                'waypoints': [],
+                'status': 'idle',
+                'paused': False,
+                'active_index': 0,
+                'name': None,
+            },
+            'annotations': [],
         }
         self.alerts            : deque[dict] = deque(maxlen=MAX_ALERTS)
         self.mission_active    = False
@@ -194,7 +229,72 @@ class MissionState:
             self.add_alert('info', 'Mission started')
 
     def update_path(self, path_data: dict):
-        self.path_data = path_data
+        if not isinstance(path_data, dict):
+            return
+
+        merged = dict(self.path_data)
+        merged.update({
+            key: value
+            for key, value in path_data.items()
+            if key not in {"route", "annotations"}
+        })
+
+        route = merged.get('route') if isinstance(merged.get('route'), dict) else {}
+        incoming_route = path_data.get('route') if isinstance(path_data.get('route'), dict) else {}
+        merged['route'] = {
+            'waypoints': incoming_route.get('waypoints', route.get('waypoints', [])),
+            'status': incoming_route.get('status', route.get('status', 'idle')),
+            'paused': bool(incoming_route.get('paused', route.get('paused', False))),
+            'active_index': int(incoming_route.get('active_index', route.get('active_index', 0)) or 0),
+            'name': incoming_route.get('name', route.get('name')),
+        }
+
+        annotations = path_data.get('annotations')
+        if isinstance(annotations, list):
+            merged['annotations'] = annotations
+        elif not isinstance(merged.get('annotations'), list):
+            merged['annotations'] = []
+
+        self.path_data = merged
+
+    def update_route(self, route_data: dict):
+        if not isinstance(route_data, dict):
+            return
+
+        current = self.path_data.get('route') if isinstance(self.path_data.get('route'), dict) else {}
+        waypoints = route_data.get('waypoints')
+        if not isinstance(waypoints, list):
+            waypoints = current.get('waypoints', [])
+
+        self.path_data['route'] = {
+            'waypoints': waypoints,
+            'status': route_data.get('status', current.get('status', 'idle')),
+            'paused': bool(route_data.get('paused', current.get('paused', False))),
+            'active_index': int(route_data.get('active_index', current.get('active_index', 0)) or 0),
+            'name': route_data.get('name', current.get('name')),
+        }
+
+    def add_annotation(self, annotation: dict):
+        if not isinstance(annotation, dict):
+            return None
+
+        annotations = self.path_data.setdefault('annotations', [])
+        if not isinstance(annotations, list):
+            annotations = []
+            self.path_data['annotations'] = annotations
+
+        entry = {
+            'id': len(annotations) + 1,
+            'kind': annotation.get('kind', 'note'),
+            'text': annotation.get('text', ''),
+            'x': annotation.get('x'),
+            'y': annotation.get('y'),
+            'heading': annotation.get('heading'),
+            'timestamp': datetime.now().isoformat(),
+            'meta': annotation.get('meta', {}),
+        }
+        annotations.append(entry)
+        return entry
 
     def add_victim(self, x: float, y: float, confidence: float):
         self.victim_count += 1
@@ -321,6 +421,65 @@ async def _run_motion_mode(mode: str, cancel_event: asyncio.Event):
                     return
                 if await _sleep_with_cancel(pause_s, cancel_event):
                     return
+        elif mode in {"follow-path", "search-grid"}:
+            route = mission.path_data.get("route") if isinstance(mission.path_data.get("route"), dict) else {}
+            waypoints = route.get("waypoints", []) if isinstance(route.get("waypoints"), list) else []
+            mission.path_data['route'] = {
+                **route,
+                'status': 'active',
+                'paused': False,
+                'active_index': 0,
+            }
+            mission.add_alert("info", f"{mode} mode armed with {len(waypoints)} waypoints")
+            await mission.broadcast("dashboard", {
+                "type": "route",
+                "route": mission.path_data['route'],
+            })
+            while not cancel_event.is_set():
+                await _sleep_with_cancel(0.5, cancel_event)
+                if mode == "search-grid" and not waypoints:
+                    break
+                if mode == "follow-path" and not waypoints:
+                    break
+                break
+
+        elif mode == "return-to-home":
+            mission.path_data['route'] = {
+                **(mission.path_data.get('route') if isinstance(mission.path_data.get('route'), dict) else {}),
+                'status': 'returning-home',
+                'paused': False,
+            }
+            mission.add_alert("info", "Return-to-home requested")
+            await mission.broadcast("dashboard", {
+                "type": "route",
+                "route": mission.path_data['route'],
+            })
+
+        elif mode == "hold-position":
+            mission.path_data['route'] = {
+                **(mission.path_data.get('route') if isinstance(mission.path_data.get('route'), dict) else {}),
+                'status': 'holding-position',
+                'paused': True,
+            }
+            await _forward_command("S")
+            mission.add_alert("info", "Hold-position engaged")
+            await mission.broadcast("dashboard", {
+                "type": "route",
+                "route": mission.path_data['route'],
+            })
+
+        elif mode == "emergency-stop":
+            mission.path_data['route'] = {
+                **(mission.path_data.get('route') if isinstance(mission.path_data.get('route'), dict) else {}),
+                'status': 'emergency-stop',
+                'paused': True,
+            }
+            await _forward_command("S")
+            mission.add_alert("critical", "Emergency stop engaged")
+            await mission.broadcast("dashboard", {
+                "type": "route",
+                "route": mission.path_data['route'],
+            })
     finally:
         mission.motion_active = False
         mission.motion_mode = None
@@ -671,6 +830,71 @@ async def post_mode(body: dict):
 
     await _start_motion_mode(mode)
     return {'motion_active': True, 'motion_mode': mode}
+
+
+@app.get("/api/route")
+async def get_route():
+    route = mission.path_data.get('route') if isinstance(mission.path_data.get('route'), dict) else {}
+    return {
+        'route': route,
+        'annotations': mission.path_data.get('annotations', []),
+    }
+
+
+@app.post("/api/route")
+async def post_route(body: dict):
+    action = body.get('action', 'set')
+    route = body.get('route', {})
+
+    if action == 'clear':
+        mission.update_route({'waypoints': [], 'status': 'idle', 'paused': False, 'active_index': 0, 'name': None})
+        mission.add_alert('info', 'Route cleared')
+    else:
+        mission.update_route(route)
+        if action == 'set':
+            mission.add_alert('info', f"Route loaded with {len(mission.path_data['route'].get('waypoints', []))} waypoints")
+        elif action == 'start':
+            mission.update_route({**route, 'status': 'active', 'paused': False, 'active_index': 0})
+            mission.motion_active = True
+            mission.motion_mode = 'follow-path'
+            mission.add_alert('info', 'Route patrol started')
+        elif action == 'pause':
+            mission.update_route({**route, 'status': 'paused', 'paused': True})
+            await _forward_command('S')
+        elif action == 'resume':
+            mission.update_route({**route, 'status': 'active', 'paused': False})
+        elif action == 'skip':
+            current = mission.path_data.get('route') if isinstance(mission.path_data.get('route'), dict) else {}
+            active_index = int(current.get('active_index', 0) or 0) + 1
+            mission.update_route({**route, 'status': 'active', 'paused': False, 'active_index': active_index})
+        elif action == 'stop':
+            mission.update_route({**route, 'status': 'idle', 'paused': False})
+            mission.motion_active = False
+            mission.motion_mode = None
+            await _forward_command('S')
+        else:
+            raise HTTPException(status_code=400, detail=f'Invalid route action: {action}')
+
+    await mission.broadcast('dashboard', {
+        'type': 'route',
+        'route': mission.path_data.get('route', {}),
+        'annotations': mission.path_data.get('annotations', []),
+    })
+    return {'ok': True, 'route': mission.path_data.get('route', {}), 'annotations': mission.path_data.get('annotations', [])}
+
+
+@app.post("/api/annotation")
+async def post_annotation(body: dict):
+    annotation = mission.add_annotation(body)
+    if not annotation:
+        raise HTTPException(status_code=400, detail='Invalid annotation')
+
+    await mission.broadcast('dashboard', {
+        'type': 'annotation',
+        'annotation': annotation,
+        'annotations': mission.path_data.get('annotations', []),
+    })
+    return {'ok': True, 'annotation': annotation}
 
 
 @app.post("/api/mission/start")
