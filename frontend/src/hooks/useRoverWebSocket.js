@@ -2,6 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_COMMANDS = ["F", "B", "L", "R", "S"];
 
+function buildWsBase() {
+	if (process.env.REACT_APP_WS_URL) return process.env.REACT_APP_WS_URL;
+	if (process.env.REACT_APP_API_URL) {
+		return process.env.REACT_APP_API_URL.replace(/^http/, "ws");
+	}
+	const proto = window.location.protocol === "https:" ? "wss" : "ws";
+	return `${proto}://${window.location.hostname}:8000`;
+}
+
 function buildHttpBase() {
 	if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
 	if (process.env.REACT_APP_WS_URL) {
@@ -23,6 +32,7 @@ async function fetchJson(url, options) {
 }
 
 export function useRoverWebSocket() {
+	const wsBaseRef = useRef(buildWsBase());
 	const httpBaseRef = useRef(buildHttpBase());
 
 	const [connected, setConnected] = useState(false);
@@ -42,74 +52,78 @@ export function useRoverWebSocket() {
 	});
 
 	useEffect(() => {
+		let ws = null;
 		let cancelled = false;
 
-		const pollStatus = async () => {
-			try {
-				const data = await fetchJson(`${httpBaseRef.current}/api/status`);
+		const connect = () => {
+			if (cancelled) return;
+			ws = new WebSocket(`${wsBaseRef.current}/ws/dashboard`);
+
+			ws.onopen = () => {
 				if (cancelled) return;
 				setConnected(true);
-				setStatus((prev) => ({
-					...prev,
-					...data,
-					capabilities: data.capabilities || prev.capabilities,
-				}));
-			} catch (e) {
-				if (!cancelled) setConnected(false);
-			}
-		};
+			};
 
-		const pollTelemetry = async () => {
-			try {
-				const data = await fetchJson(
-					`${httpBaseRef.current}/api/telemetry/history?limit=1`,
-				);
+			ws.onmessage = (event) => {
 				if (cancelled) return;
-				const latest = data.telemetry?.[data.telemetry.length - 1] || null;
-				if (latest) setTelemetry(latest);
-			} catch (e) {
-				// ignore telemetry errors
-			}
-		};
+				try {
+					const msg = JSON.parse(event.data);
+					if (msg.type === 'init') {
+						setTelemetry(msg.telemetry);
+						setPathData(msg.path);
+						setAlerts(msg.alerts || []);
+						setStatus((prev) => ({
+							...prev,
+							...msg.status,
+							capabilities: msg.status.capabilities || prev.capabilities,
+						}));
+					} else if (msg.type === 'telemetry') {
+						setTelemetry(msg.telemetry);
+						setPathData(msg.path);
+					} else if (msg.type === 'event') {
+						if (msg.alert) {
+							setAlerts((prev) => [msg.alert, ...prev].slice(0, 50));
+						}
+					} else if (msg.type === 'heartbeat') {
+						setStatus((prev) => ({
+							...prev,
+							...msg.status,
+							capabilities: msg.status.capabilities || prev.capabilities,
+						}));
+					} else if (msg.type === 'victim') {
+						setStatus((prev) => ({ ...prev, victim_count: msg.count }));
+						if (msg.alert) {
+							setAlerts((prev) => [msg.alert, ...prev].slice(0, 50));
+						}
+					} else if (msg.type === 'mode') {
+						setStatus((prev) => ({
+							...prev,
+							motion_active: msg.status.motion_active,
+							motion_mode: msg.status.motion_mode,
+						}));
+					}
+				} catch (e) {
+					console.error('WS message parse error:', e);
+				}
+			};
 
-		const pollPath = async () => {
-			try {
-				const data = await fetchJson(`${httpBaseRef.current}/api/path`);
+			ws.onclose = () => {
 				if (cancelled) return;
-				setPathData(data || null);
-			} catch (e) {
-				// ignore path errors
-			}
+				setConnected(false);
+				// Reconnect after delay
+				setTimeout(connect, 1000);
+			};
+
+			ws.onerror = (error) => {
+				console.error('WS error:', error);
+			};
 		};
 
-		const pollAlerts = async () => {
-			try {
-				const data = await fetchJson(
-					`${httpBaseRef.current}/api/alerts?limit=50`,
-				);
-				if (cancelled) return;
-				setAlerts(data.alerts || []);
-			} catch (e) {
-				// ignore alert errors
-			}
-		};
-
-		pollStatus();
-		pollTelemetry();
-		pollPath();
-		pollAlerts();
-
-		const statusTimer = setInterval(pollStatus, 1000);
-		const telemetryTimer = setInterval(pollTelemetry, 500);
-		const pathTimer = setInterval(pollPath, 1000);
-		const alertTimer = setInterval(pollAlerts, 2000);
+		connect();
 
 		return () => {
 			cancelled = true;
-			clearInterval(statusTimer);
-			clearInterval(telemetryTimer);
-			clearInterval(pathTimer);
-			clearInterval(alertTimer);
+			if (ws) ws.close();
 		};
 	}, []);
 
