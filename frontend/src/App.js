@@ -149,6 +149,30 @@ const styles = {
 
 // ─── Utility components ─────────────────────────────────────────────────────
 
+function Vb({ active, onClick, children }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			style={{
+				padding: "8px 12px",
+				borderRadius: 9,
+				border: `1px solid ${active ? C.accent : C.border}`,
+				background: active ? C.accentDim : C.panel,
+				color: active ? C.accent : C.dimText,
+				fontSize: 11,
+				cursor: "pointer",
+				fontFamily: "inherit",
+				letterSpacing: 1,
+				fontWeight: 700,
+				textTransform: "uppercase",
+			}}
+		>
+			{children}
+		</button>
+	);
+}
+
 function Pill({ children, color = C.dimText, bg = C.surface }) {
 	return <span style={styles.badge(color, bg)}>{children}</span>;
 }
@@ -1293,11 +1317,9 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 					<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
 						<button onClick={() => onNavigate("dashboard")} style={heroPrimaryButton}>Open Dashboard</button>
 						<button onClick={() => onNavigate("map")} style={heroSecondaryButton}>Open Satellite Map</button>
-							gridRow: isMobile ? "5" : "2 / 3",
-							minHeight: isMobile ? 260 : 360,
 					</div>
 				</div>
-						<CameraPanel src={httpBase ? `${httpBase}/api/camera/stream` : ""} large title="CAMERA FEED" />
+
 				<div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14, marginBottom: 18 }}>
 					<HeroStat label="Telemetry samples" value={quickStats.samples} tone={C.blue} />
 					<HeroStat label="Victims located" value={quickStats.victims} tone={C.yellow} />
