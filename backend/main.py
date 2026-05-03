@@ -41,7 +41,7 @@ except ImportError:
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", "http://raspberry-pi.local:8081")
+PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", "http://raspberry-pi.local:8081").rstrip("/")
 PI_BRIDGE_WS     = os.getenv("PI_BRIDGE_WS", "ws://raspberry-pi.local:8081")
 MAX_TELEMETRY_HISTORY = 2000     # packets kept in memory
 MAX_ALERTS       = 200
