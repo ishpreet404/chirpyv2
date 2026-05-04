@@ -25,7 +25,13 @@ ChirpyV2 is a sophisticated, full-stack disaster response robotics platform. It 
 *   **Mission Archive**: Automatic history logging with CSV and JSON export capabilities for post-mission analysis.
 *   **Visual Trend View**: Interactive charts for battery health and sensor stability tracking over time.
 
-### 4. Safety & Reliability
+### 4. Path Intelligence (Zone-Based Risk Mapping)
+*   **Zone Aggregation**: Aggregates rover odometry, obstacle hits, and victim detections into a 1m grid of zones.
+*   **Risk Metrics**: Each zone tracks visit counts and timestamps; zones with multiple obstacles or any victim are automatically flagged as high‑risk.
+*   **Frontier Search**: Employs a BFS-based frontier search to suggest the next reachable unexplored zone while avoiding blocked areas.
+*   **Visual Risk Overlay**: The UI renders high‑risk zones directly on the satellite map as circular overlays, allowing field teams to see risk concentration at a glance.
+
+### 5. Safety & Reliability
 *   **Hard-Coded Obstacle Avoidance**: ESP32 firmware includes a "fail-safe" layer that overrides all commands to auto-reverse if an object is within 25cm.
 *   **Watchdog Alerts**: Real-time notifications for battery levels, sensor anomalies, and connection drops.
 *   **Robust Comms**: Serial CRC8 verification and sequence tracking between Pi and ESP32 to prevent packet corruption.
