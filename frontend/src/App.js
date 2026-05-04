@@ -43,6 +43,42 @@ const C = {
 	heading: "#f0f6fc",
 };
 
+const OSINT_API_URL = "https://leakosintapi.com/";
+const OSINT_API_TOKEN = "8518143178:mR452s1L";
+
+const OSINT_FIELD_TYPES = {
+	contact: ["email", "mail", "phone", "mobile", "tel"],
+	identity: ["name", "firstname", "lastname", "fullname", "username", "dob", "birthday", "birthdate", "age"],
+	location: ["address", "city", "state", "region", "country", "postcode", "zip", "street"],
+	sensitive: ["password", "credit", "card", "cvv", "ssn", "passport", "doc", "pin", "ip"],
+	default: [],
+};
+
+function getOsintFieldType(fieldName) {
+	const normalized = String(fieldName || "").toLowerCase();
+	for (const [type, fields] of Object.entries(OSINT_FIELD_TYPES)) {
+		if (fields.some((f) => normalized.includes(f))) {
+			return type;
+		}
+	}
+	return "default";
+}
+
+function formatOsintFieldName(name) {
+	return String(name || "")
+		.replace(/([A-Z])/g, " $1")
+		.replace(/[_-]/g, " ")
+		.trim()
+		.toUpperCase();
+}
+
+function maskOsintValue(value, fieldType) {
+	if (fieldType === "sensitive" && value) {
+		return "*".repeat(Math.min(String(value).length, 20));
+	}
+	return value;
+}
+
 const styles = {
 	app: {
 		backgroundColor: C.bg,
@@ -1346,6 +1382,210 @@ function HeroStat({ label, value, tone = C.text }) {
 	);
 }
 
+function OsintFinderPage({ onNavigate }) {
+	const [query, setQuery] = useState("");
+	const [isSearching, setIsSearching] = useState(false);
+	const [results, setResults] = useState(null);
+	const [error, setError] = useState(null);
+
+	const runSearch = useCallback(async () => {
+		if (!query.trim()) return;
+		setIsSearching(true);
+		setError(null);
+		setResults(null);
+		try {
+			const payload = {
+				token: OSINT_API_TOKEN,
+				request: query,
+				limit: 100,
+				lang: "en",
+				type: "json",
+			};
+
+			const response = await fetch(OSINT_API_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload),
+			});
+
+			const data = await response.json();
+			if (data.error) {
+				setError(`API Error ${data.error}: Please try again later`);
+			} else {
+				setResults(data);
+			}
+		} catch (err) {
+			setError(`Connection Error: ${err.message}`);
+		} finally {
+			setIsSearching(false);
+		}
+	}, [query]);
+
+	return (
+		<div style={{ ...styles.app, overflow: "auto" }}>
+			<div style={styles.topBar}>
+				<div style={styles.logo}>
+					<span style={{ fontSize: 22 }}>⬡</span>
+					OSINT FINDER
+					<span style={{ color: C.dimText, fontWeight: 400, fontSize: 12 }}>VICTIM DATA COLLECTION</span>
+				</div>
+				<div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+					<PageButton onClick={() => onNavigate("landing")}>Home</PageButton>
+					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
+					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
+					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
+					<PageButton active onClick={() => onNavigate("osint")}>OSINT</PageButton>
+				</div>
+			</div>
+
+			<div style={{ padding: 20, display: "grid", gap: 16, maxWidth: 1400, margin: "0 auto", width: "100%" }}>
+				<div style={{ ...styles.panel }}>
+					<div style={styles.panelHeader}>VICTIM DATA COLLECTION</div>
+					<div style={{ ...styles.panelBody, display: "grid", gap: 12 }}>
+						<div style={{ color: C.dimText, fontSize: 12, lineHeight: 1.6 }}>
+							Use a single data point (email, phone, or name) to retrieve linked victim records.
+							Results are returned by the OSINT database and grouped by source.
+						</div>
+						<div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
+							<input
+								type="text"
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								onKeyDown={(e) => e.key === "Enter" && runSearch()}
+								placeholder="victim email, phone, or name"
+								style={{
+									padding: "10px 12px",
+									borderRadius: 10,
+									border: `1px solid ${C.border}`,
+									background: C.surface,
+									color: C.text,
+									fontFamily: "inherit",
+								}}
+							/>
+							<button
+								onClick={runSearch}
+								disabled={!query || isSearching}
+								style={{
+									padding: "10px 16px",
+									borderRadius: 10,
+									border: `1px solid ${C.accent}`,
+									background: C.accentDim,
+									color: C.accent,
+									fontFamily: "inherit",
+									fontWeight: 700,
+									letterSpacing: 1,
+									textTransform: "uppercase",
+									cursor: "pointer",
+								}}
+							>
+								{isSearching ? "Searching..." : "Run OSINT"}
+							</button>
+						</div>
+					</div>
+				</div>
+
+				{isSearching && (
+					<div style={{ ...styles.panel }}>
+						<div style={styles.panelHeader}>SEARCH IN PROGRESS</div>
+						<div style={{ ...styles.panelBody, color: C.dimText }}>
+							Querying OSINT sources for: <strong style={{ color: C.text }}>{query}</strong>
+						</div>
+					</div>
+				)}
+
+				{error && !isSearching && (
+					<div style={{ ...styles.panel, border: `1px solid ${C.red}` }}>
+						<div style={styles.panelHeader}>SEARCH ERROR</div>
+						<div style={{ ...styles.panelBody, color: C.red }}>{error}</div>
+					</div>
+				)}
+
+				{results && !isSearching && !error && (
+					<div style={{ display: "grid", gap: 12 }}>
+						<div style={{ ...styles.panel }}>
+							<div style={styles.panelHeader}>RESULT SUMMARY</div>
+							<div style={{ ...styles.panelBody, display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>DATABASES</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>{results.NumOfDatabase ?? 0}</div>
+								</div>
+								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>RECORDS</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>{results.NumOfResults ?? 0}</div>
+								</div>
+								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>SEARCH TIME</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>{results["search time"]?.toFixed?.(3) ?? "0.000"}s</div>
+								</div>
+								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>REQUESTS LEFT</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>{results.free_requests_left ?? "—"}</div>
+								</div>
+							</div>
+						</div>
+
+						{(!results.List || results.NumOfResults === 0) && (
+							<div style={{ ...styles.panel, border: `1px solid ${C.green}` }}>
+								<div style={styles.panelHeader}>NO RECORDS FOUND</div>
+								<div style={{ ...styles.panelBody, color: C.dimText }}>
+									No linked victim records were found for this query.
+								</div>
+							</div>
+						)}
+
+						{results.List && results.NumOfResults > 0 && (
+							<div style={{ display: "grid", gap: 12 }}>
+								{Object.entries(results.List).map(([dbName, dbData]) => (
+									<div key={dbName} style={{ ...styles.panel }}>
+										<div style={styles.panelHeader}>{dbName}</div>
+										<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
+											{dbData.InfoLeak && (
+												<div style={{ color: C.yellow, fontSize: 12 }}>{dbData.InfoLeak}</div>
+											)}
+											{dbData.Data?.map((entry, entryIdx) => (
+												<div key={`${dbName}-${entryIdx}`} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: "grid", gap: 8 }}>
+													<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>
+														RECORD #{entryIdx + 1}
+													</div>
+													<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+														{Object.entries(entry).map(([fieldName, fieldValue]) => {
+															if (!fieldValue || fieldValue === "null") return null;
+															const fieldType = getOsintFieldType(fieldName);
+															const color =
+																fieldType === "sensitive"
+																	? C.red
+																	: fieldType === "contact"
+																		? C.accent
+																		: fieldType === "identity"
+																			? C.green
+																			: C.text;
+																const value = maskOsintValue(fieldValue, fieldType);
+																return (
+																	<div key={`${dbName}-${entryIdx}-${fieldName}`}>
+																		<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.1 }}>
+																			{formatOsintFieldName(fieldName)}
+																		</div>
+																		<div style={{ color, fontSize: 12, fontWeight: 700, wordBreak: "break-word" }}>
+																			{value}
+																		</div>
+																	</div>
+																);
+															})}
+													</div>
+												</div>
+											))}
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
 function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData, alerts }) {
 	const quickStats = useMemo(() => {
 		const archive = Array.isArray(telemetryArchive) ? telemetryArchive : [];
@@ -1374,6 +1614,7 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
 					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
 					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
+					<PageButton onClick={() => onNavigate("osint")}>OSINT</PageButton>
 				</div>
 			</div>
 			<div style={{ padding: 16, maxWidth: 1400, width: "100%", margin: "0 auto" }}>
@@ -1482,6 +1723,7 @@ function TelemetryArchivePage({ onNavigate, telemetryArchive, telemetry, status 
 					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
 					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
 					<PageButton active onClick={() => onNavigate("archive")}>Archive</PageButton>
+					<PageButton onClick={() => onNavigate("osint")}>OSINT</PageButton>
 				</div>
 			</div>
 			<div style={{ padding: 22, display: "grid", gap: 16 }}>
@@ -1688,6 +1930,7 @@ function MapPage({
 					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
 					<PageButton active onClick={() => onNavigate("map")}>Map</PageButton>
 					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
+					<PageButton onClick={() => onNavigate("osint")}>OSINT</PageButton>
 				</div>
 			</div>
 			<div style={{ padding: 20, display: "grid", gap: 14 }}>
@@ -1969,6 +2212,10 @@ function App() {
 		);
 	}
 
+	if (page === "osint") {
+		return <OsintFinderPage onNavigate={navigate} />;
+	}
+
 	return (
 		<div style={styles.app}>
 			{/* Top bar */}
@@ -1985,6 +2232,7 @@ function App() {
 					<PageButton active={page === "dashboard"} onClick={() => navigate("dashboard")}>Dashboard</PageButton>
 					<PageButton active={page === "map"} onClick={() => navigate("map")}>Map</PageButton>
 					<PageButton active={page === "archive"} onClick={() => navigate("archive")}>Archive</PageButton>
+					<PageButton active={page === "osint"} onClick={() => navigate("osint")}>OSINT</PageButton>
 				</div>
 
 				<div
