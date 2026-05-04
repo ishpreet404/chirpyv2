@@ -2,3 +2,7 @@
 PI_BRIDGE_URL=http://192.168.1.11:8081
 BACKEND_WS_URL=ws://192.168.1.7:8000/ws/rover
 BACKEND_HTTP_URL=http://192.168.1.7:8000
+
+# OpenRouter Configuration
+OPENROUTER_API_KEY=your_key_here
+OPENROUTER_MODEL=openai/gpt-4o-mini

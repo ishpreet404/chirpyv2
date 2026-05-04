@@ -154,6 +154,7 @@ class MissionState:
             },
             'annotations': [],
         }
+        self.survivors         : list[dict]  = []  # List of {id, timestamp, responses, transcript}
         self.alerts            : deque[dict] = deque(maxlen=MAX_ALERTS)
         self.mission_active    = False
         self.mission_start_t   : float | None = None
@@ -895,6 +896,104 @@ async def post_annotation(body: dict):
         'annotations': mission.path_data.get('annotations', []),
     })
     return {'ok': True, 'annotation': annotation}
+
+
+# ─── Survivor Interaction APIs ────────────────────────────────────────────────
+
+@app.get("/api/survivors")
+async def get_survivors():
+    return {"ok": True, "survivors": mission.survivors}
+
+
+@app.post("/api/survivors/interaction")
+async def post_interaction(body: dict):
+    """
+    Called by Pi when it detects a survivor or receives input.
+    Can trigger LLM logic via OpenRouter if transcript is provided.
+    """
+    transcript = body.get("transcript", "")
+    responses = body.get("responses", {})  # e.g., {"can_move": false, "conscious": true}
+    
+    # Store interaction
+    entry = {
+        "id": len(mission.survivors) + 1,
+        "timestamp": datetime.now().isoformat(),
+        "transcript": transcript,
+        "responses": responses,
+        "location": mission.latest_telemetry.get("abs_coords") if mission.latest_telemetry else None
+    }
+    mission.survivors.append(entry)
+    mission.add_alert("info", f"Survivor interaction logged: {transcript[:30]}...")
+
+    # If transcript contains "help" or "save", or if it's a generic query, we can use LLM
+    llm_reply = None
+    if transcript and os.getenv("OPENROUTER_API_KEY"):
+        llm_reply = await get_llm_response(transcript)
+    
+    # Broadcast to dashboard
+    await mission.broadcast("dashboard", {
+        "type": "survivor_interaction",
+        "data": entry,
+        "llm_reply": llm_reply
+    })
+
+    return {"ok": True, "llm_reply": llm_reply, "entry": entry}
+
+
+async def get_llm_response(user_text: str):
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        return "I am a rescue robot. Help is on the way."
+
+    # Robot-specific strict prompt
+    system_prompt = (
+        "You are ChirpyV2, a specialized Disaster Rescue Rover. "
+        "Your responses MUST be strictly bounded by your physical capabilities: "
+        "1. You can navigate terrain and identify survivors. "
+        "2. You can relay messages and GPS coordinates to human rescue teams. "
+        "3. You can provide basic status updates (help is coming, teams are notified). "
+        "NEVER claim you can perform medical procedures, move heavy debris, or provide food/water directly. "
+        "Always introduce yourself as 'ChirpyV2, the rescue rover' if the conversation is starting. "
+        "Keep responses under 3 sentences. Be calm and reassuming."
+    )
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/chirpy-v2", # Recommended by OpenRouter
+        "X-Title": "ChirpyV2 Rescue Rover"
+    }
+    payload = {
+        "model": os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_text}
+        ],
+        "include_reasoning": True
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload, timeout=15) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    choice = data['choices'][0]['message']
+                    
+                    # Log reasoning if available (sent by some models in 'reasoning' or 'content')
+                    reasoning = choice.get("reasoning")
+                    if reasoning:
+                        log.info(f"Robot Reasoning: {reasoning}")
+                        
+                    usage = data.get("usage", {})
+                    if "reasoning_tokens" in usage:
+                        log.info(f"Reasoning tokens used: {usage['reasoning_tokens']}")
+
+                    return choice['content']
+    except Exception as e:
+        log.error(f"LLM Error: {e}")
+    
+    return "I have recorded your status. Remain calm."
 
 
 @app.post("/api/mission/start")

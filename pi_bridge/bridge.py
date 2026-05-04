@@ -747,6 +747,16 @@ class RoverBridge:
         self.relay     = BackendRelay()
         self.tracker   = PathTracker()
         self.logger    = SessionLogger(LOG_DIR)
+        
+        # Survivor Interaction Module
+        self.survivor_active = False
+        try:
+            from survivor_module import SurvivorModule
+            self.survivor_module = SurvivorModule()
+            threading.Thread(target=self.survivor_module.run, daemon=True).start()
+        except ImportError:
+            self.survivor_module = None
+            logging.warning("SurvivorModule not found, skipping speech features")
 
         self.latest_telemetry : dict | None = None
         self._lock = asyncio.Lock()
@@ -795,6 +805,11 @@ class RoverBridge:
             'confidence': conf,
             'detections': detections,
         })
+
+        # Start Survivor Interaction Sequence
+        if self.survivor_module:
+            # Run in a separate thread so we don't block the bridge
+            threading.Thread(target=self.survivor_module.ask_questions, daemon=True).start()
 
     def send_command(self, cmd: str):
         self.serial.send_command(cmd)
