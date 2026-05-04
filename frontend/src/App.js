@@ -10,6 +10,7 @@ import {
 	MapContainer,
 	TileLayer,
 	Polyline,
+	Circle,
 	CircleMarker,
 	Popup,
 	useMap,
@@ -45,6 +46,7 @@ const C = {
 
 const OSINT_API_URL = "https://leakosintapi.com/";
 const OSINT_API_TOKEN = "8518143178:mR452s1L";
+const ZONE_RADIUS_M = 0.5;
 
 const OSINT_FIELD_TYPES = {
 	contact: ["email", "mail", "phone", "mobile", "tel"],
@@ -319,6 +321,10 @@ function originToPosition(origin) {
 	return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : [0, 0];
 }
 
+function lastItem(list) {
+	return Array.isArray(list) && list.length ? list[list.length - 1] : null;
+}
+
 function odomToLatLng(xCm, yCm, origin) {
 	const lat0 = parseNumber(origin?.lat, 0);
 	const lng0 = parseNumber(origin?.lng, 0);
@@ -335,13 +341,13 @@ function odomToLatLng(xCm, yCm, origin) {
 	return [lat, lng];
 }
 
-function MapBounds({ bounds }) {
+function MapBounds({ bounds, enabled = true }) {
 	const map = useMap();
 
 	useEffect(() => {
-		if (!bounds) return;
+		if (!enabled || !bounds) return;
 		map.fitBounds(bounds, { padding: [32, 32], maxZoom: 21 });
-	}, [bounds, map]);
+	}, [bounds, enabled, map]);
 
 	return null;
 }
@@ -371,30 +377,16 @@ function MapAutoResize() {
 	return null;
 }
 
-function MapInteractionLayer({ mode, onWaypointAdd, onAnnotationAdd }) {
+function MapInteractionLayer({ mode, onWaypointAdd }) {
 	useMapEvents({
 		click: (event) => {
 			if (mode === "waypoint") {
 				onWaypointAdd?.(event.latlng);
 			}
-			if (mode === "annotation") {
-				onAnnotationAdd?.(event.latlng);
-			}
 		},
 	});
 
 	return null;
-}
-
-function annotationTone(kind) {
-	switch (String(kind || "note").toLowerCase()) {
-		case "hazard":
-			return { fg: C.red, bg: "#300" };
-		case "checkpoint":
-			return { fg: C.green, bg: "#103018" };
-		default:
-			return { fg: C.blue, bg: "#10263a" };
-	}
 }
 
 function SatelliteMapPanel({
@@ -405,7 +397,6 @@ function SatelliteMapPanel({
 	setOrigin,
 	plannerMode,
 	onWaypointAdd,
-	onAnnotationAdd,
 }) {
 	const mapData = useMemo(() => {
 		const rawSegments = Array.isArray(pathData?.segments) ? pathData.segments : [];
@@ -427,11 +418,11 @@ function SatelliteMapPanel({
 			})
 			.filter(Boolean);
 
-		const obstacles = Array.isArray(pathData?.obstacles) ? pathData.obstacles : [];
 		const victims = Array.isArray(pathData?.victims) ? pathData.victims : [];
 		const route = pathData?.route && typeof pathData.route === "object" ? pathData.route : {};
 		const routeWaypoints = Array.isArray(route.waypoints) ? route.waypoints : [];
-		const annotations = Array.isArray(pathData?.annotations) ? pathData.annotations : [];
+		const highRiskZones = Array.isArray(pathData?.zones?.high_risk) ? pathData.zones.high_risk : [];
+		const zoneSizeCm = Number(pathData?.zones?.size_cm) || ZONE_RADIUS_M * 200;
 		const roverX = telemetry?.abs_x ?? telemetry?.x;
 		const roverY = telemetry?.abs_y ?? telemetry?.y;
 		const roverPoint =
@@ -446,39 +437,41 @@ function SatelliteMapPanel({
 				pointsForBounds.push([Number(waypoint.lat), Number(waypoint.lng)]);
 			}
 		});
-		obstacles.forEach((obs) => {
-			if (obs?.x != null && obs?.y != null) {
-				pointsForBounds.push(odomToLatLng(obs.x, obs.y, origin));
-			}
-		});
 		victims.forEach((victim) => {
 			if (victim?.x != null && victim?.y != null) {
 				pointsForBounds.push(odomToLatLng(victim.x, victim.y, origin));
 			}
 		});
-		annotations.forEach((annotation) => {
-			if (annotation?.x != null && annotation?.y != null && Number.isFinite(Number(annotation.x)) && Number.isFinite(Number(annotation.y))) {
-				pointsForBounds.push([Number(annotation.lat ?? annotation.x), Number(annotation.lng ?? annotation.y)]);
-			}
+		highRiskZones.forEach((zone) => {
+			if (zone?.x == null || zone?.y == null) return;
+			const xCm = (Number(zone.x) + 0.5) * zoneSizeCm;
+			const yCm = (Number(zone.y) + 0.5) * zoneSizeCm;
+			pointsForBounds.push(odomToLatLng(xCm, yCm, origin));
 		});
 		if (roverPoint) pointsForBounds.push(roverPoint);
 
 		return {
 			pathLines,
 			livePath,
-			obstacles,
 			victims,
 			route,
 			routeWaypoints,
-			annotations,
+			highRiskZones,
+			zoneSizeCm,
 			roverPoint,
 			roverHeading,
 			bounds: pointsForBounds.length > 1 ? pointsForBounds : null,
 		};
 	}, [origin, pathData, telemetry, telemetryHistory]);
 
-	const currentCenter = mapData.roverPoint || originToPosition(origin);
 	const originPosition = originToPosition(origin);
+	const fallbackCenter = mapData.roverPoint || lastItem(mapData.livePath) || lastItem(lastItem(mapData.pathLines)) || originToPosition(origin);
+	const allowFitBounds = !mapData.roverPoint;
+	const originLat = parseNumber(origin?.lat, NaN);
+	const originLng = parseNumber(origin?.lng, NaN);
+	const originHasCoords = Number.isFinite(originLat) && Number.isFinite(originLng);
+	const originIsZero = originHasCoords && originLat === 0 && originLng === 0;
+	const originMarkerPosition = (!originHasCoords || originIsZero) ? mapData.roverPoint : originPosition;
 
 	const updateOrigin = (field, value) => {
 		const next = { ...origin, [field]: value };
@@ -493,7 +486,7 @@ function SatelliteMapPanel({
 			<div style={styles.panelHeader}>
 				SATELLITE MAP
 				<span style={{ float: "right", color: C.dimText, fontWeight: 400 }}>
-					{mapData.pathLines.length} segments · {mapData.routeWaypoints.length} waypoints · {mapData.annotations.length} annotations
+					{mapData.pathLines.length} segments · {mapData.routeWaypoints.length} waypoints · {mapData.highRiskZones.length} high-risk zones
 				</span>
 			</div>
 			<div style={{ ...styles.panelBody, padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -571,7 +564,7 @@ function SatelliteMapPanel({
 				<div style={{ flex: 1, minHeight: 320, position: "relative", overflow: "hidden" }}>
 					{origin.lat !== "" && origin.lng !== "" ? (
 						<MapContainer
-							center={currentCenter}
+							center={fallbackCenter}
 							zoom={20}
 							minZoom={3}
 							maxZoom={22}
@@ -585,20 +578,19 @@ function SatelliteMapPanel({
 								url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 								attribution='Tiles &copy; Esri'
 							/>
-							{origin.lat !== "" && origin.lng !== "" && (
+							{originMarkerPosition && (
 								<CircleMarker
-									center={originPosition}
+									center={originMarkerPosition}
 									radius={6}
 									pathOptions={{ color: C.green, fillColor: C.green, fillOpacity: 0.7, weight: 2 }}
 								>
 									<Popup>Rover</Popup>
 								</CircleMarker>
 							)}
-							{mapData.bounds && <MapBounds bounds={mapData.bounds} />}
+							{mapData.bounds && <MapBounds bounds={mapData.bounds} enabled={allowFitBounds} />}
 							<MapInteractionLayer
 								mode={plannerMode}
 								onWaypointAdd={onWaypointAdd}
-								onAnnotationAdd={onAnnotationAdd}
 							/>
 							{mapData.pathLines.map((line, index) => (
 								<Polyline key={`path-${index}`} positions={line} pathOptions={{ color: C.accent, weight: 4, opacity: 0.65 }} />
@@ -612,45 +604,40 @@ function SatelliteMapPanel({
 									pathOptions={{ color: C.blue, weight: 3, dashArray: "8 6", opacity: 0.9 }}
 								/>
 							)}
-							{mapData.obstacles.map((obs, index) => {
-								if (obs?.x == null || obs?.y == null) return null;
-								const position = odomToLatLng(obs.x, obs.y, origin);
-								return (
-									<CircleMarker key={`obs-${index}`} center={position} radius={6} pathOptions={{ color: C.red, fillColor: C.red, fillOpacity: 0.55, weight: 2 }}>
-										<Popup>Obstacle</Popup>
-									</CircleMarker>
-								);
-							})}
 							{mapData.routeWaypoints.map((waypoint, index) => {
 								if (waypoint?.lat == null || waypoint?.lng == null) return null;
 								const position = [Number(waypoint.lat), Number(waypoint.lng)];
 								const isActive = mapData.route?.active_index === index;
 								return (
-									<CircleMarker
-										key={`waypoint-${index}`}
-										center={position}
-										radius={isActive ? 8 : 6}
-										pathOptions={{ color: isActive ? C.green : C.blue, fillColor: isActive ? C.green : C.blue, fillOpacity: 0.9, weight: 2 }}
-									>
-										<Popup>Waypoint #{index + 1}</Popup>
-									</CircleMarker>
+									<React.Fragment key={`waypoint-${index}`}>
+										<Circle
+											center={position}
+											radius={ZONE_RADIUS_M}
+											pathOptions={{ color: C.blue, fillColor: C.blue, fillOpacity: 0.15, weight: 1 }}
+										/>
+										<CircleMarker
+											center={position}
+											radius={isActive ? 8 : 6}
+											pathOptions={{ color: isActive ? C.green : C.blue, fillColor: isActive ? C.green : C.blue, fillOpacity: 0.9, weight: 2 }}
+										>
+											<Popup>Waypoint #{index + 1}</Popup>
+										</CircleMarker>
+									</React.Fragment>
 								);
 							})}
-							{mapData.annotations.map((annotation, index) => {
-								if (annotation?.x == null || annotation?.y == null) return null;
-								const lat = Number(annotation.lat ?? annotation.x);
-								const lng = Number(annotation.lng ?? annotation.y);
-								if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-								const tone = annotationTone(annotation.kind);
+							{mapData.highRiskZones.map((zone, index) => {
+								if (zone?.x == null || zone?.y == null) return null;
+								const xCm = (Number(zone.x) + 0.5) * mapData.zoneSizeCm;
+								const yCm = (Number(zone.y) + 0.5) * mapData.zoneSizeCm;
+								const center = odomToLatLng(xCm, yCm, origin);
+								const zoneRadiusM = mapData.zoneSizeCm / 200;
 								return (
-									<CircleMarker key={`annotation-${annotation.id ?? index}`} center={[lat, lng]} radius={7} pathOptions={{ color: tone.fg, fillColor: tone.fg, fillOpacity: 0.4, weight: 2 }}>
-										<Popup>
-											<div style={{ minWidth: 160 }}>
-												<div style={{ color: tone.fg, fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" }}>{annotation.kind || "note"}</div>
-												<div style={{ marginTop: 6 }}>{annotation.text || "Map annotation"}</div>
-											</div>
-										</Popup>
-									</CircleMarker>
+									<Circle
+										key={`high-risk-${index}`}
+										center={center}
+										radius={zoneRadiusM}
+										pathOptions={{ color: C.yellow, fillColor: C.yellow, fillOpacity: 0.18, weight: 1 }}
+									/>
 								);
 							})}
 							{mapData.victims.map((victim, index) => {
@@ -658,9 +645,16 @@ function SatelliteMapPanel({
 								const position = odomToLatLng(victim.x, victim.y, origin);
 								const label = victim?.id ?? victim?.victim_id ?? index + 1;
 								return (
-									<CircleMarker key={`victim-${label}-${index}`} center={position} radius={7} pathOptions={{ color: C.yellow, fillColor: C.yellow, fillOpacity: 0.35, weight: 2 }}>
-										<Popup>Victim #{label}</Popup>
-									</CircleMarker>
+									<React.Fragment key={`victim-${label}-${index}`}>
+										<Circle
+											center={position}
+											radius={ZONE_RADIUS_M}
+											pathOptions={{ color: C.yellow, fillColor: C.yellow, fillOpacity: 0.15, weight: 1 }}
+										/>
+										<CircleMarker center={position} radius={7} pathOptions={{ color: C.yellow, fillColor: C.yellow, fillOpacity: 0.35, weight: 2 }}>
+											<Popup>Victim #{label}</Popup>
+										</CircleMarker>
+									</React.Fragment>
 								);
 							})}
 							{mapData.roverPoint && (
@@ -751,7 +745,6 @@ function PathCanvas({ pathData, telemetry }) {
 		}
 
 		const segments = pathData?.segments || [];
-		const obstacles = pathData?.obstacles || [];
 		const victims = pathData?.victims || [];
 
 		// Collect all points to compute bounds
@@ -814,16 +807,6 @@ function PathCanvas({ pathData, telemetry }) {
 		ctx.lineTo(ox, oy + 10);
 		ctx.stroke();
 
-		// Obstacles
-		obstacles.forEach((obs) => {
-			const [sx, sy] = toScreen(obs.x, obs.y);
-			ctx.fillStyle = C.red;
-			ctx.globalAlpha = 0.5;
-			ctx.beginPath();
-			ctx.arc(sx, sy, 5, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.globalAlpha = 1;
-		});
 
 		// Path segments
 		segments.forEach((seg, si) => {
@@ -890,16 +873,6 @@ function PathCanvas({ pathData, telemetry }) {
 			);
 			ctx.stroke();
 
-			// Obstacle ring if active
-			if (telemetry.obstacle) {
-				ctx.strokeStyle = C.red;
-				ctx.lineWidth = 2;
-				ctx.setLineDash([4, 4]);
-				ctx.beginPath();
-				ctx.arc(rx, ry, 20, 0, Math.PI * 2);
-				ctx.stroke();
-				ctx.setLineDash([]);
-			}
 		}
 
 		// Legend
@@ -908,7 +881,6 @@ function PathCanvas({ pathData, telemetry }) {
 		[
 			[C.green, "●", "ROVER"],
 			[C.accent, "—", "PATH"],
-			[C.red, "●", "OBSTACLE"],
 			[C.yellow, "○", "VICTIM"],
 		].forEach(([color, sym, label], i) => {
 			ctx.fillStyle = color;
@@ -1647,7 +1619,7 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 								"Stored telemetry archive with trend charts",
 								"Satellite map with rover path and victim markers",
 								"Camera stream and manual command controls",
-								"Alert feed with obstacle and watchdog events",
+								"Alert feed with watchdog events",
 							].map((item) => (
 								<div key={item} style={{ padding: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10 }}>{item}</div>
 							))}
@@ -1803,12 +1775,9 @@ function MapPage({
 }) {
 	const routeState = pathData?.route && typeof pathData.route === "object" ? pathData.route : { waypoints: [], status: "idle", paused: false, active_index: 0, name: "Patrol Route" };
 	const backendWaypoints = Array.isArray(routeState.waypoints) ? routeState.waypoints : [];
-	const annotations = Array.isArray(pathData?.annotations) ? pathData.annotations : [];
 	const [plannerMode, setPlannerMode] = useState("waypoint");
 	const [routeName, setRouteName] = useState(routeState.name || "Patrol Route");
 	const [draftWaypoints, setDraftWaypoints] = useState(backendWaypoints);
-	const [annotationKind, setAnnotationKind] = useState("note");
-	const [annotationText, setAnnotationText] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 	const [waypointLat, setWaypointLat] = useState("");
 	const [waypointLng, setWaypointLng] = useState("");
@@ -1900,22 +1869,6 @@ function MapPage({
 		}).catch(() => {});
 	}, [draftWaypoints, postJson, routeName, waypointLat, waypointLng]);
 
-	const handleAnnotationAdd = useCallback((latlng) => {
-		const text = annotationText.trim();
-		if (!text) return;
-		postJson("/api/annotation", {
-			kind: annotationKind,
-			text,
-			x: Number(latlng.lat.toFixed(6)),
-			y: Number(latlng.lng.toFixed(6)),
-			lat: Number(latlng.lat.toFixed(6)),
-			lng: Number(latlng.lng.toFixed(6)),
-			meta: { source: "map", routeName: routeName.trim() || "Patrol Route" },
-		}).then(() => {
-			setAnnotationText("");
-		}).catch(() => {});
-	}, [annotationKind, annotationText, postJson, routeName]);
-
 	const clearRoute = useCallback(async () => {
 		setDraftWaypoints([]);
 		await updateRoute("clear", { status: "idle", paused: false, active_index: 0 });
@@ -1945,29 +1898,7 @@ function MapPage({
 								setOrigin={setMapOrigin}
 								plannerMode={plannerMode}
 								onWaypointAdd={handleWaypointAdd}
-								onAnnotationAdd={handleAnnotationAdd}
 							/>
-						</div>
-						<div style={{ ...styles.panel, borderRadius: 24 }}>
-							<div style={styles.panelHeader}>ZONE INTELLIGENCE</div>
-							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
-								{pathData?.zones ? (
-									<>
-										<TelRow label="Zone size" value={pathData.zones.size_cm} unit="cm" />
-										<TelRow label="Visited zones" value={pathData.zones.visited?.length ?? 0} />
-										<TelRow label="Blocked zones" value={pathData.zones.blocked?.length ?? 0} color={C.red} />
-										<TelRow label="High-risk zones" value={pathData.zones.high_risk?.length ?? 0} color={C.yellow} />
-										<TelRow
-											label="Suggested next"
-											value={pathData.zones.suggested_next ? `(${pathData.zones.suggested_next.x}, ${pathData.zones.suggested_next.y})` : "—"}
-										/>
-									</>
-								) : (
-									<div style={{ color: C.dimText, fontSize: 12 }}>
-										No zone intelligence available yet.
-									</div>
-								)}
-							</div>
 						</div>
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
 							<div style={styles.panelHeader}>MISSION SNAPSHOT</div>
@@ -1975,7 +1906,6 @@ function MapPage({
 								<TelRow label="Pi" value={status?.pi_connected ? "ONLINE" : "OFFLINE"} color={status?.pi_connected ? C.green : C.red} />
 								<TelRow label="Rover state" value={status?.rover_state || "STP"} />
 								<TelRow label="Victims" value={status?.victim_count || 0} color={status?.victim_count ? C.yellow : C.text} />
-								<TelRow label="Obstacle active" value={status?.obstacle_active ? "YES" : "NO"} color={status?.obstacle_active ? C.red : C.text} />
 								<TelRow label="Camera" value="LIVE" />
 								<TelRow label="Planner mode" value={plannerMode.toUpperCase()} />
 							</div>
@@ -1987,7 +1917,6 @@ function MapPage({
 								<div style={markerLegendItem}><span style={{ color: C.accent }}>━</span> Live path</div>
 								<div style={markerLegendItem}><span style={{ color: C.blue }}>●</span> Waypoint</div>
 								<div style={markerLegendItem}><span style={{ color: C.yellow }}>●</span> Victim</div>
-								<div style={markerLegendItem}><span style={{ color: C.red }}>●</span> Hazard</div>
 							</div>
 						</div>
 					</div>
@@ -1996,7 +1925,7 @@ function MapPage({
 							<div style={styles.panelHeader}>ROUTE PLANNER</div>
 							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
 								<div style={{ color: C.dimText, fontSize: 11, lineHeight: 1.6 }}>
-									Choose <strong>Waypoint</strong> mode and click the map to build a patrol path, or switch to <strong>Annotation</strong> mode to drop notes and hazard markers.
+										Choose <strong>Waypoint</strong> mode and click the map to build a patrol path.
 								</div>
 								<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
 									Route name
@@ -2031,18 +1960,8 @@ function MapPage({
 								</div>
 								<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
 									<Vb active={plannerMode === "waypoint"} onClick={() => setPlannerMode("waypoint")}>Waypoint</Vb>
-									<Vb active={plannerMode === "annotation"} onClick={() => setPlannerMode("annotation")}>Annotation</Vb>
 									<Vb active={plannerMode === "inspect"} onClick={() => setPlannerMode("inspect")}>Inspect</Vb>
 								</div>
-								<div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr 1fr" }}>
-									<button type="button" onClick={() => setAnnotationKind("note")} style={{ ...heroSecondaryButton, padding: "8px 10px", borderRadius: 12, borderColor: annotationKind === "note" ? C.blue : C.border, color: annotationKind === "note" ? C.blue : C.text }}>Note</button>
-									<button type="button" onClick={() => setAnnotationKind("hazard")} style={{ ...heroSecondaryButton, padding: "8px 10px", borderRadius: 12, borderColor: annotationKind === "hazard" ? C.red : C.border, color: annotationKind === "hazard" ? C.red : C.text }}>Hazard</button>
-									<button type="button" onClick={() => setAnnotationKind("checkpoint")} style={{ ...heroSecondaryButton, padding: "8px 10px", borderRadius: 12, borderColor: annotationKind === "checkpoint" ? C.green : C.border, color: annotationKind === "checkpoint" ? C.green : C.text }}>Checkpoint</button>
-								</div>
-								<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
-									Annotation text
-									<textarea value={annotationText} onChange={(e) => setAnnotationText(e.target.value)} rows={3} style={{ ...mapInputStyle, resize: "vertical", minHeight: 76 }} placeholder="Add a short note for the field team" />
-								</label>
 								<div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
 									<button type="button" disabled={isSaving} onClick={() => updateRoute("set")} style={heroPrimaryButton}>Save route</button>
 									<button type="button" disabled={isSaving} onClick={() => updateRoute("start", { status: "active", paused: false, active_index: 0 })} style={heroSecondaryButton}>Start patrol</button>
@@ -2053,7 +1972,6 @@ function MapPage({
 								</div>
 								<div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: C.dimText }}>
 									<Pill color={C.blue} bg="#10263a">{draftWaypoints.length} waypoints</Pill>
-									<Pill color={C.yellow} bg="#30260b">{annotations.length} annotations</Pill>
 									<Pill color={C.green} bg="#0f2414">{routeState.status || "idle"}</Pill>
 								</div>
 							</div>
@@ -2276,11 +2194,6 @@ function App() {
 					>
 						PI {status.pi_connected ? "ONLINE" : "OFFLINE"}
 					</Pill>
-					{status.obstacle_active && (
-						<Pill color={C.red} bg="#300">
-							⚠ OBSTACLE
-						</Pill>
-					)}
 					{status.motion_active && status.motion_mode && (
 						<Pill color={C.accent} bg={C.accentDim}>
 							MODE {String(status.motion_mode).toUpperCase()}
@@ -2422,10 +2335,6 @@ function App() {
 							label="Uptime"
 							value={telemetry?.ms ? (telemetry.ms / 1000).toFixed(0) : "—"}
 							unit="s"
-						/>
-						<TelRow
-							label="Obstacles"
-							value={pathData?.obstacles?.length ?? 0}
 						/>
 						<TelRow
 							label="Victims"

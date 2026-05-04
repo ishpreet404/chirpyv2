@@ -351,10 +351,7 @@ class MissionState:
 
         visited_keys = set(visited_counts.keys())
         blocked_keys = {k for k, c in obstacle_counts.items() if c >= ZONE_BLOCKED_OBS_MIN}
-        high_risk_keys = {
-            k for k in visited_keys.union(obstacle_counts.keys(), victim_counts.keys())
-            if obstacle_counts.get(k, 0) >= ZONE_HIGH_RISK_OBS_MIN or victim_counts.get(k, 0) > 0
-        }
+        high_risk_keys = {k for k, count in victim_counts.items() if count > 0}
 
         current = self.latest_telemetry or {}
         cur_x = current.get('abs_x')

@@ -67,7 +67,6 @@ export function useRoverWebSocket() {
 		mission_active: false,
 		rover_state: "STP",
 		auto_mode: false,
-		obstacle_active: false,
 		victim_count: 0,
 		motion_active: false,
 		motion_mode: null,
@@ -107,7 +106,6 @@ export function useRoverWebSocket() {
 				setPathData((prev) => ({
 					...(prev || {}),
 					route: data.route || prev?.route || { waypoints: [], status: "idle", paused: false, active_index: 0, name: null },
-					annotations: Array.isArray(data.annotations) ? data.annotations : prev?.annotations || [],
 				}));
 			} catch {
 				// route planning is optional; keep dashboard usable if the API is unavailable
@@ -149,12 +147,6 @@ export function useRoverWebSocket() {
 							...(prev || {}),
 							...(msg.path || {}),
 							route: msg.route || prev?.route || null,
-							annotations: Array.isArray(msg.annotations) ? msg.annotations : prev?.annotations || [],
-						}));
-					} else if (msg.type === 'annotation') {
-						setPathData((prev) => ({
-							...(prev || {}),
-							annotations: Array.isArray(msg.annotations) ? msg.annotations : [msg.annotation, ...(prev?.annotations || [])].filter(Boolean),
 						}));
 					} else if (msg.type === 'event') {
 						if (msg.alert) {
