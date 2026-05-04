@@ -53,7 +53,8 @@ const styles = {
 		fontFamily: "'Inter', 'Segoe UI', sans-serif",
 		display: "flex",
 		flexDirection: "column",
-		overflow: "hidden",
+		overflowY: "auto",
+		overflowX: "hidden",
 		position: "relative",
 	},
 	topBar: {
@@ -92,14 +93,15 @@ const styles = {
 		boxShadow: "0 10px 20px rgba(0,0,0,0.18)",
 	}),
 	grid: {
-		flex: 1,
+		flex: "0 0 auto",
 		display: "grid",
 		gridTemplateColumns: "300px 1fr 260px",
-		gridTemplateRows: "1fr 220px",
+		gridTemplateRows: "auto 220px",
 		gap: 12,
 		padding: 12,
 		background: "transparent",
-		overflow: "hidden",
+		overflow: "visible",
+		alignContent: "start",
 		minHeight: 0,
 	},
 	gridMobile: {
@@ -308,6 +310,31 @@ function MapBounds({ bounds }) {
 	return null;
 }
 
+function MapAutoResize() {
+	const map = useMap();
+
+	useEffect(() => {
+		const handleResize = () => map.invalidateSize();
+		const rafId = requestAnimationFrame(handleResize);
+		const timeoutId = window.setTimeout(handleResize, 250);
+		const container = map.getContainer();
+		const observer = typeof ResizeObserver !== "undefined"
+			? new ResizeObserver(handleResize)
+			: null;
+
+		observer?.observe(container);
+		window.addEventListener("resize", handleResize);
+		return () => {
+			window.removeEventListener("resize", handleResize);
+			observer?.disconnect();
+			cancelAnimationFrame(rafId);
+			clearTimeout(timeoutId);
+		};
+	}, [map]);
+
+	return null;
+}
+
 function MapInteractionLayer({ mode, onWaypointAdd, onAnnotationAdd }) {
 	useMapEvents({
 		click: (event) => {
@@ -337,6 +364,7 @@ function annotationTone(kind) {
 function SatelliteMapPanel({
 	pathData,
 	telemetry,
+	telemetryHistory,
 	origin,
 	setOrigin,
 	plannerMode,
@@ -354,6 +382,15 @@ function SatelliteMapPanel({
 			})
 			.filter((line) => line.length > 1);
 
+		const livePath = (Array.isArray(telemetryHistory) ? telemetryHistory : [])
+			.map((point) => {
+				const x = point?.abs_x ?? point?.x;
+				const y = point?.abs_y ?? point?.y;
+				if (x == null || y == null) return null;
+				return odomToLatLng(x, y, origin);
+			})
+			.filter(Boolean);
+
 		const obstacles = Array.isArray(pathData?.obstacles) ? pathData.obstacles : [];
 		const victims = Array.isArray(pathData?.victims) ? pathData.victims : [];
 		const route = pathData?.route && typeof pathData.route === "object" ? pathData.route : {};
@@ -367,6 +404,7 @@ function SatelliteMapPanel({
 
 		const pointsForBounds = [];
 		pathLines.forEach((line) => pointsForBounds.push(...line));
+		if (livePath.length > 1) pointsForBounds.push(...livePath);
 		routeWaypoints.forEach((waypoint) => {
 			if (waypoint?.lat != null && waypoint?.lng != null) {
 				pointsForBounds.push([Number(waypoint.lat), Number(waypoint.lng)]);
@@ -391,6 +429,7 @@ function SatelliteMapPanel({
 
 		return {
 			pathLines,
+			livePath,
 			obstacles,
 			victims,
 			route,
@@ -400,9 +439,10 @@ function SatelliteMapPanel({
 			roverHeading,
 			bounds: pointsForBounds.length > 1 ? pointsForBounds : null,
 		};
-	}, [origin, pathData, telemetry]);
+	}, [origin, pathData, telemetry, telemetryHistory]);
 
 	const currentCenter = mapData.roverPoint || originToPosition(origin);
+	const originPosition = originToPosition(origin);
 
 	const updateOrigin = (field, value) => {
 		const next = { ...origin, [field]: value };
@@ -413,14 +453,14 @@ function SatelliteMapPanel({
 	};
 
 	return (
-		<div style={styles.panel}>
+		<div style={{ ...styles.panel, minHeight: 420 }}>
 			<div style={styles.panelHeader}>
 				SATELLITE MAP
 				<span style={{ float: "right", color: C.dimText, fontWeight: 400 }}>
 					{mapData.pathLines.length} segments · {mapData.routeWaypoints.length} waypoints · {mapData.annotations.length} annotations
 				</span>
 			</div>
-			<div style={{ ...styles.panelBody, padding: 0, display: "flex", flexDirection: "column" }}>
+			<div style={{ ...styles.panelBody, padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 				<div
 					style={{
 						display: "grid",
@@ -433,7 +473,7 @@ function SatelliteMapPanel({
 					}}
 				>
 					<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
-						Start Latitude
+						Rover Latitude
 						<input
 							type="number"
 							step="any"
@@ -444,7 +484,7 @@ function SatelliteMapPanel({
 						/>
 					</label>
 					<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
-						Start Longitude
+						Rover Longitude
 						<input
 							type="number"
 							step="any"
@@ -455,7 +495,7 @@ function SatelliteMapPanel({
 						/>
 					</label>
 					<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
-						Start Heading
+						Rover Heading
 						<input
 							type="number"
 							step="any"
@@ -492,21 +532,32 @@ function SatelliteMapPanel({
 					</button>
 				</div>
 
-				<div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+				<div style={{ flex: 1, minHeight: 320, position: "relative", overflow: "hidden" }}>
 					{origin.lat !== "" && origin.lng !== "" ? (
 						<MapContainer
 							center={currentCenter}
 							zoom={20}
 							minZoom={3}
 							maxZoom={22}
-							style={{ width: "100%", height: "100%" }}
+							style={{ width: "100%", height: "100%", minHeight: 320 }}
 							preferCanvas={true}
 							zoomControl={true}
+							whenReady={(e) => e.target.invalidateSize()}
 						>
+							<MapAutoResize />
 							<TileLayer
 								url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 								attribution='Tiles &copy; Esri'
 							/>
+							{origin.lat !== "" && origin.lng !== "" && (
+								<CircleMarker
+									center={originPosition}
+									radius={6}
+									pathOptions={{ color: C.green, fillColor: C.green, fillOpacity: 0.7, weight: 2 }}
+								>
+									<Popup>Rover</Popup>
+								</CircleMarker>
+							)}
 							{mapData.bounds && <MapBounds bounds={mapData.bounds} />}
 							<MapInteractionLayer
 								mode={plannerMode}
@@ -514,8 +565,11 @@ function SatelliteMapPanel({
 								onAnnotationAdd={onAnnotationAdd}
 							/>
 							{mapData.pathLines.map((line, index) => (
-								<Polyline key={`path-${index}`} positions={line} pathOptions={{ color: C.accent, weight: 4, opacity: 0.85 }} />
+								<Polyline key={`path-${index}`} positions={line} pathOptions={{ color: C.accent, weight: 4, opacity: 0.65 }} />
 							))}
+							{mapData.livePath.length > 1 && (
+								<Polyline positions={mapData.livePath} pathOptions={{ color: C.red, weight: 3, opacity: 0.9 }} />
+							)}
 							{mapData.routeWaypoints.length > 0 && (
 								<Polyline
 									positions={mapData.routeWaypoints.map((waypoint) => [Number(waypoint.lat), Number(waypoint.lng)])}
@@ -1114,14 +1168,14 @@ function TelemetryChart({ history }) {
 
 function AlertsPanel({ alerts }) {
 	return (
-		<div style={styles.panel}>
+		<div style={{ ...styles.panel, height: "auto", minHeight: 260, maxHeight: "100%" }}>
 			<div style={styles.panelHeader}>
 				ALERTS
 				<span style={{ float: "right", color: C.red }}>
 					{alerts.filter((a) => a.level === "critical").length} CRIT
 				</span>
 			</div>
-			<div style={{ ...styles.panelBody, padding: "8px" }}>
+			<div style={{ ...styles.panelBody, padding: "8px", overflowY: "auto", maxHeight: "100%" }}>
 				{alerts.length === 0 && (
 					<div
 						style={{
@@ -1184,9 +1238,11 @@ function AlertsPanel({ alerts }) {
 
 function CameraPanel({ src, large = false, title = "CAMERA" }) {
 	const [hasError, setHasError] = useState(false);
+	const [isReady, setIsReady] = useState(false);
 
 	useEffect(() => {
 		setHasError(false);
+		setIsReady(false);
 	}, [src]);
 
 	return (
@@ -1205,32 +1261,47 @@ function CameraPanel({ src, large = false, title = "CAMERA" }) {
 				}}
 			>
 				{src && !hasError ? (
-					<div style={{ width: "100%", height: "100%", position: "relative", background: "#050607" }}>
-					<img
-						src={src}
-						alt="Rover camera"
-						style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: "contrast(1.05) saturate(1.04)" }}
-						onError={() => setHasError(true)}
-					/>
-						<div
-							style={{
-								position: "absolute",
-								left: 10,
-								top: 10,
-								padding: "6px 8px",
-								borderRadius: 8,
-								background: "rgba(0,0,0,0.55)",
-								border: `1px solid ${C.green}`,
-								color: C.green,
-								fontSize: 10,
-								letterSpacing: 1,
-								fontWeight: 700,
-								textTransform: "uppercase",
-								pointerEvents: "none",
+					<div
+						style={{
+							width: "100%",
+							height: "100%",
+							display: "grid",
+							placeItems: "stretch",
+							background: "#050607",
+						}}
+					>
+						<img
+							src={src}
+							alt=""
+							style={{ gridArea: "1 / 1", width: "100%", height: "100%", objectFit: "cover", display: "block", filter: "contrast(1.05) saturate(1.04)" }}
+							onLoad={() => setIsReady(true)}
+							onError={() => {
+								setIsReady(false);
+								setHasError(true);
 							}}
-						>
-							OpenCV detection overlay
-						</div>
+						/>
+						{isReady && (
+							<div
+								style={{
+									gridArea: "1 / 1",
+									alignSelf: "start",
+									justifySelf: "start",
+									margin: 10,
+									padding: "6px 8px",
+									borderRadius: 8,
+									background: "rgba(0,0,0,0.55)",
+									border: `1px solid ${C.green}`,
+									color: C.green,
+									fontSize: 10,
+									letterSpacing: 1,
+									fontWeight: 700,
+									textTransform: "uppercase",
+									pointerEvents: "none",
+								}}
+							>
+								OpenCV detection overlay
+							</div>
+						)}
 					</div>
 				) : (
 					<div style={{ color: C.dimText, fontSize: 11 }}>
@@ -1394,39 +1465,39 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
 				</div>
 			</div>
-			<div style={{ padding: 24, maxWidth: 1400, width: "100%", margin: "0 auto" }}>
-				<div style={{ background: `linear-gradient(135deg, ${C.surface}, ${C.panel})`, border: `1px solid ${C.border}`, borderRadius: 24, padding: 28, marginBottom: 20, boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
+			<div style={{ padding: 16, maxWidth: 1400, width: "100%", margin: "0 auto" }}>
+				<div style={{ background: `linear-gradient(135deg, ${C.surface}, ${C.panel})`, border: `1px solid ${C.border}`, borderRadius: 20, padding: 22, marginBottom: 12, boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
 					<div style={{ color: C.accent, letterSpacing: 2, fontSize: 11, textTransform: "uppercase" }}>Live Rover Operations</div>
-					<h1 style={{ margin: "12px 0 10px", fontSize: 44, lineHeight: 1.05, color: C.heading }}>
+					<h1 style={{ margin: "10px 0 8px", fontSize: 40, lineHeight: 1.05, color: C.heading }}>
 						Satellite-grade mission tracking for rover telemetry, victims, and path history.
 					</h1>
-					<p style={{ maxWidth: 860, color: C.dimText, fontSize: 15, lineHeight: 1.7 }}>
+					<p style={{ maxWidth: 860, color: C.dimText, fontSize: 14, lineHeight: 1.6 }}>
 						The dashboard stores incoming telemetry, plots odometry on a satellite map, keeps a searchable archive, and surfaces mission controls, camera, and alerts in one place.
 					</p>
-					<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+					<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
 						<button onClick={() => onNavigate("dashboard")} style={heroPrimaryButton}>Open Dashboard</button>
 						<button onClick={() => onNavigate("map")} style={heroSecondaryButton}>Open Satellite Map</button>
 					</div>
 				</div>
 
-				<div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14, marginBottom: 18 }}>
+				<div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 12 }}>
 					<HeroStat label="Telemetry samples" value={quickStats.samples} tone={C.blue} />
 					<HeroStat label="Victims located" value={quickStats.victims} tone={C.yellow} />
 					<HeroStat label="Total distance" value={`${quickStats.distanceM} m`} tone={C.green} />
 					<HeroStat label="Average battery" value={`${quickStats.battery} V`} tone={C.accent} />
 				</div>
 
-				<div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 14 }}>
+				<div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 10 }}>
 					<div style={{ ...styles.panel, borderRadius: 20 }}>
 						<div style={styles.panelHeader}>MISSION HIGHLIGHTS</div>
-						<div style={{ ...styles.panelBody, display: "grid", gap: 12 }}>
+						<div style={{ ...styles.panelBody, display: "grid", gap: 8 }}>
 							{[
 								"Stored telemetry archive with trend charts",
 								"Satellite map with rover path and victim markers",
 								"Camera stream and manual command controls",
 								"Alert feed with obstacle and watchdog events",
 							].map((item) => (
-								<div key={item} style={{ padding: 12, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12 }}>{item}</div>
+								<div key={item} style={{ padding: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10 }}>{item}</div>
 							))}
 						</div>
 					</div>
@@ -1570,6 +1641,7 @@ function MapPage({
 	onNavigate,
 	pathData,
 	telemetry,
+	telemetryHistory,
 	mapOrigin,
 	setMapOrigin,
 	status,
@@ -1585,6 +1657,8 @@ function MapPage({
 	const [annotationKind, setAnnotationKind] = useState("note");
 	const [annotationText, setAnnotationText] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
+	const [waypointLat, setWaypointLat] = useState("");
+	const [waypointLng, setWaypointLng] = useState("");
 
 	useEffect(() => {
 		if (backendWaypoints.length === 0 || draftWaypoints.length > 0) return;
@@ -1653,6 +1727,26 @@ function MapPage({
 		}).catch(() => {});
 	}, [draftWaypoints, postJson, routeName]);
 
+	const handleWaypointAddManual = useCallback(() => {
+		const lat = Number.parseFloat(waypointLat);
+		const lng = Number.parseFloat(waypointLng);
+		if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+		const next = [...draftWaypoints, { lat, lng }];
+		setDraftWaypoints(next);
+		setWaypointLat("");
+		setWaypointLng("");
+		postJson("/api/route", {
+			action: "set",
+			route: {
+				name: routeName.trim() || "Patrol Route",
+				waypoints: next,
+				status: "idle",
+				paused: false,
+				active_index: 0,
+			},
+		}).catch(() => {});
+	}, [draftWaypoints, postJson, routeName, waypointLat, waypointLng]);
+
 	const handleAnnotationAdd = useCallback((latlng) => {
 		const text = annotationText.trim();
 		if (!text) return;
@@ -1686,17 +1780,41 @@ function MapPage({
 				</div>
 			</div>
 			<div style={{ padding: 20, display: "grid", gap: 14 }}>
-				<div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 14 }}>
-					<div style={{ ...styles.panel, borderRadius: 24, minHeight: 760 }}>
-						<SatelliteMapPanel
-							pathData={pathData}
-							telemetry={telemetry}
-							origin={mapOrigin}
-							setOrigin={setMapOrigin}
-							plannerMode={plannerMode}
-							onWaypointAdd={handleWaypointAdd}
-							onAnnotationAdd={handleAnnotationAdd}
-						/>
+				<div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 14, alignItems: "start" }}>
+					<div style={{ display: "grid", gap: 14 }}>
+						<div style={{ ...styles.panel, borderRadius: 24 }}>
+							<SatelliteMapPanel
+								pathData={pathData}
+								telemetry={telemetry}
+								telemetryHistory={telemetryHistory}
+								origin={mapOrigin}
+								setOrigin={setMapOrigin}
+								plannerMode={plannerMode}
+								onWaypointAdd={handleWaypointAdd}
+								onAnnotationAdd={handleAnnotationAdd}
+							/>
+						</div>
+						<div style={{ ...styles.panel, borderRadius: 24 }}>
+							<div style={styles.panelHeader}>MISSION SNAPSHOT</div>
+							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
+								<TelRow label="Pi" value={status?.pi_connected ? "ONLINE" : "OFFLINE"} color={status?.pi_connected ? C.green : C.red} />
+								<TelRow label="Rover state" value={status?.rover_state || "STP"} />
+								<TelRow label="Victims" value={status?.victim_count || 0} color={status?.victim_count ? C.yellow : C.text} />
+								<TelRow label="Obstacle active" value={status?.obstacle_active ? "YES" : "NO"} color={status?.obstacle_active ? C.red : C.text} />
+								<TelRow label="Camera" value="LIVE" />
+								<TelRow label="Planner mode" value={plannerMode.toUpperCase()} />
+							</div>
+						</div>
+						<div style={{ ...styles.panel, borderRadius: 24 }}>
+							<div style={styles.panelHeader}>MARKERS</div>
+							<div style={{ ...styles.panelBody, display: "grid", gap: 8 }}>
+								<div style={markerLegendItem}><span style={{ color: C.green }}>●</span> Rover</div>
+								<div style={markerLegendItem}><span style={{ color: C.accent }}>━</span> Live path</div>
+								<div style={markerLegendItem}><span style={{ color: C.blue }}>●</span> Waypoint</div>
+								<div style={markerLegendItem}><span style={{ color: C.yellow }}>●</span> Victim</div>
+								<div style={markerLegendItem}><span style={{ color: C.red }}>●</span> Hazard</div>
+							</div>
+						</div>
 					</div>
 					<div style={{ display: "grid", gap: 14 }}>
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
@@ -1709,6 +1827,33 @@ function MapPage({
 									Route name
 									<input value={routeName} onChange={(e) => setRouteName(e.target.value)} style={mapInputStyle} placeholder="Patrol Route" />
 								</label>
+								<div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr auto", alignItems: "end" }}>
+									<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+										Waypoint Lat
+										<input
+											type="number"
+											step="any"
+											value={waypointLat}
+											onChange={(e) => setWaypointLat(e.target.value)}
+											placeholder="e.g. 18.5204"
+											style={mapInputStyle}
+										/>
+									</label>
+									<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+										Waypoint Lng
+										<input
+											type="number"
+											step="any"
+											value={waypointLng}
+											onChange={(e) => setWaypointLng(e.target.value)}
+											placeholder="e.g. 73.8567"
+											style={mapInputStyle}
+										/>
+									</label>
+									<button type="button" onClick={handleWaypointAddManual} style={{ ...heroSecondaryButton, padding: "8px 10px", borderRadius: 12 }}>
+										Add waypoint
+									</button>
+								</div>
 								<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
 									<Vb active={plannerMode === "waypoint"} onClick={() => setPlannerMode("waypoint")}>Waypoint</Vb>
 									<Vb active={plannerMode === "annotation"} onClick={() => setPlannerMode("annotation")}>Annotation</Vb>
@@ -1762,27 +1907,6 @@ function MapPage({
 										{mode}
 									</button>
 								))}
-							</div>
-						</div>
-						<div style={{ ...styles.panel, borderRadius: 24 }}>
-							<div style={styles.panelHeader}>MISSION SNAPSHOT</div>
-							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
-								<TelRow label="Pi" value={status?.pi_connected ? "ONLINE" : "OFFLINE"} color={status?.pi_connected ? C.green : C.red} />
-								<TelRow label="Rover state" value={status?.rover_state || "STP"} />
-								<TelRow label="Victims" value={status?.victim_count || 0} color={status?.victim_count ? C.yellow : C.text} />
-								<TelRow label="Obstacle active" value={status?.obstacle_active ? "YES" : "NO"} color={status?.obstacle_active ? C.red : C.text} />
-								<TelRow label="Camera" value="LIVE" />
-								<TelRow label="Planner mode" value={plannerMode.toUpperCase()} />
-							</div>
-						</div>
-						<div style={{ ...styles.panel, borderRadius: 24 }}>
-							<div style={styles.panelHeader}>MARKERS</div>
-							<div style={{ ...styles.panelBody, display: "grid", gap: 8 }}>
-								<div style={markerLegendItem}><span style={{ color: C.green }}>●</span> Rover</div>
-								<div style={markerLegendItem}><span style={{ color: C.accent }}>━</span> Live path</div>
-								<div style={markerLegendItem}><span style={{ color: C.blue }}>●</span> Waypoint</div>
-								<div style={markerLegendItem}><span style={{ color: C.yellow }}>●</span> Victim</div>
-								<div style={markerLegendItem}><span style={{ color: C.red }}>●</span> Hazard</div>
 							</div>
 						</div>
 					</div>
@@ -1924,6 +2048,7 @@ function App() {
 				onNavigate={navigate}
 				pathData={pathData}
 				telemetry={telemetry}
+				telemetryHistory={telemetryHistory}
 				mapOrigin={mapOrigin}
 				setMapOrigin={setMapOrigin}
 				status={status}
@@ -1955,11 +2080,11 @@ function App() {
 					</span>
 				</div>
 				<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+					<PageButton active={page === "landing"} onClick={() => navigate("landing")}>Home</PageButton>
 					<PageButton active={page === "dashboard"} onClick={() => navigate("dashboard")}>Dashboard</PageButton>
 					<PageButton active={page === "map"} onClick={() => navigate("map")}>Map</PageButton>
 					<PageButton active={page === "survivor"} onClick={() => navigate("survivor")}>Survivor</PageButton>
 					<PageButton active={page === "archive"} onClick={() => navigate("archive")}>Archive</PageButton>
-					<PageButton active={page === "landing"} onClick={() => navigate("landing")}>Home</PageButton>
 				</div>
 
 				<div
@@ -2241,6 +2366,7 @@ function App() {
 					<SatelliteMapPanel
 						pathData={pathData}
 						telemetry={telemetry}
+						telemetryHistory={telemetryHistory}
 						origin={mapOrigin}
 						setOrigin={setMapOrigin}
 					/>
