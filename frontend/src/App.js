@@ -1949,6 +1949,27 @@ function MapPage({
 							/>
 						</div>
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
+							<div style={styles.panelHeader}>ZONE INTELLIGENCE</div>
+							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
+								{pathData?.zones ? (
+									<>
+										<TelRow label="Zone size" value={pathData.zones.size_cm} unit="cm" />
+										<TelRow label="Visited zones" value={pathData.zones.visited?.length ?? 0} />
+										<TelRow label="Blocked zones" value={pathData.zones.blocked?.length ?? 0} color={C.red} />
+										<TelRow label="High-risk zones" value={pathData.zones.high_risk?.length ?? 0} color={C.yellow} />
+										<TelRow
+											label="Suggested next"
+											value={pathData.zones.suggested_next ? `(${pathData.zones.suggested_next.x}, ${pathData.zones.suggested_next.y})` : "—"}
+										/>
+									</>
+								) : (
+									<div style={{ color: C.dimText, fontSize: 12 }}>
+										No zone intelligence available yet.
+									</div>
+								)}
+							</div>
+						</div>
+						<div style={{ ...styles.panel, borderRadius: 24 }}>
 							<div style={styles.panelHeader}>MISSION SNAPSHOT</div>
 							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
 								<TelRow label="Pi" value={status?.pi_connected ? "ONLINE" : "OFFLINE"} color={status?.pi_connected ? C.green : C.red} />
