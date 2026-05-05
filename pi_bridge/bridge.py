@@ -54,11 +54,17 @@ from aiohttp import web
 try:
     from dotenv import load_dotenv
 
-    _env_path = os.path.join(os.path.dirname(__file__), "..", "localenv")
+    # Try absolute path first, then relative
+    _env_path = r"d:\ChirpyV2\localenv"
     if os.path.exists(_env_path):
-        load_dotenv(_env_path, verbose=False)
+        load_dotenv(_env_path, verbose=False, override=True)
     else:
-        load_dotenv()
+        # Fallback to relative path
+        _env_path = os.path.join(os.path.dirname(__file__), "..", "localenv")
+        if os.path.exists(_env_path):
+            load_dotenv(_env_path, verbose=False, override=True)
+        else:
+            load_dotenv(verbose=False, override=True)
 except ImportError:
     pass
 
@@ -78,8 +84,8 @@ SERIAL_FRAME_START = ">"
 SERIAL_RECONNECT_BASE_S = 1.0
 SERIAL_RECONNECT_MAX_S  = 8.0
 SERIAL_ERROR_LOG_THROTTLE_S = 2.0
-BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL") or "ws://192.168.1.7:8000/ws/rover"
-BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL") or "http://192.168.1.7:8000"
+BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL") or "ws://10.108.194.236:8000/ws/rover"
+BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL") or "http://10.108.194.236:8000"
 CAMERA_INDEX     = 0
 CAMERA_PORT      = 8081             # MJPEG stream port
 HEARTBEAT_INTERVAL_S = 2.0          # Send P command every 2s
