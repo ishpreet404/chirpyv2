@@ -784,15 +784,22 @@ async def ws_dashboard(websocket: WebSocket):
 
 
 async def _forward_command(cmd: str):
+    # Log the attempt
+    log.info(f"Forwarding command '{cmd}' to Pi Bridge at {PI_BRIDGE_URL}")
     try:
         async with aiohttp.ClientSession() as session:
-            await session.post(
+            async with session.post(
                 f"{PI_BRIDGE_URL}/command",
                 json={'command': cmd},
                 timeout=aiohttp.ClientTimeout(total=2),
-            )
+            ) as resp:
+                if resp.status == 200:
+                    log.info(f"Command '{cmd}' accepted by Pi Bridge")
+                else:
+                    text = await resp.text()
+                    log.warning(f"Pi Bridge returned status {resp.status} for command '{cmd}': {text}")
     except Exception as e:
-        log.warning(f"Command forward failed: {e}")
+        log.warning(f"Command forward failed for '{cmd}': {e}")
 
 # ─── REST API ─────────────────────────────────────────────────────────────────
 
