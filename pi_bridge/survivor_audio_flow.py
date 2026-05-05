@@ -75,15 +75,24 @@ class SurvivorAudioFlow:
         aplay = _which("aplay")
 
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and mpg123:
-            cmd = [mpg123]
-            if AUDIO_OUTPUT_BACKEND:
-                cmd.extend(["-o", AUDIO_OUTPUT_BACKEND])
-            if AUDIO_OUTPUT_DEVICE:
-                cmd.extend(["-a", AUDIO_OUTPUT_DEVICE])
-            cmd.append("-q")
-            cmd.append(path)
-            commands.append(cmd)
-            if AUDIO_PLAYER == "auto" and (AUDIO_OUTPUT_BACKEND or AUDIO_OUTPUT_DEVICE):
+            backend_candidates = [AUDIO_OUTPUT_BACKEND] if AUDIO_OUTPUT_BACKEND else []
+            backend_candidates.extend(["alsa", "pulse"])
+            if not backend_candidates:
+                backend_candidates = [None]
+
+            seen = set()
+            for backend in backend_candidates:
+                cmd = [mpg123]
+                if backend and backend not in seen:
+                    cmd.extend(["-o", backend])
+                    seen.add(backend)
+                if AUDIO_OUTPUT_DEVICE:
+                    cmd.extend(["-a", AUDIO_OUTPUT_DEVICE])
+                cmd.extend(["-q", path])
+                commands.append(cmd)
+
+            # Last resort: let mpg123 pick its own compiled-in default backend.
+            if AUDIO_OUTPUT_BACKEND or AUDIO_OUTPUT_DEVICE:
                 commands.append([mpg123, "-q", path])
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and ffplay:
             commands.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "error", path])
