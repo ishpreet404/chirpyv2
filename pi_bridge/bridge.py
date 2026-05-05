@@ -52,6 +52,13 @@ import serial
 from aiohttp import web
 
 try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO = None
+    YOLO_AVAILABLE = False
+
+try:
     from dotenv import load_dotenv
 
     # Try absolute path first, then relative
@@ -97,24 +104,15 @@ SUPPORTED_COMMANDS = ("F", "B", "L", "R", "S")
 ENABLE_HEARTBEAT = False
 ENABLE_VICTIM_NOTIFY = False
 
-# HOG person detector parameters (no neural net dependency)
-HOG_WIN_STRIDE   = (8, 8)
-HOG_PADDING      = (4, 4)
-HOG_SCALE        = 1.05
-HOG_HIT_THRESHOLD = float(os.getenv("HOG_HIT_THRESHOLD", "-0.25"))
-HOG_FINAL_THRESHOLD = int(os.getenv("HOG_FINAL_THRESHOLD", "0"))
-DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", "-0.25"))
+# YOLOv8 Nano person detector parameters
+YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH", "yolov8n.pt")
+YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.18"))
+YOLO_IOU_THRESHOLD = float(os.getenv("YOLO_IOU_THRESHOLD", "0.45"))
+YOLO_IMAGE_SIZE = int(os.getenv("YOLO_IMAGE_SIZE", "416"))
+YOLO_DEVICE = os.getenv("YOLO_DEVICE", "cpu")
+YOLO_MAX_DETECTIONS = int(os.getenv("YOLO_MAX_DETECTIONS", "10"))
+YOLO_PERSON_CLASS_ID = int(os.getenv("YOLO_PERSON_CLASS_ID", "0"))
 DETECTION_INTERVAL_S = float(os.getenv("DETECTION_INTERVAL_S", "1.0"))
-DETECTION_RESIZE_WIDTH = int(os.getenv("DETECTION_RESIZE_WIDTH", "480"))
-DETECTION_RESIZE_HEIGHT = int(os.getenv("DETECTION_RESIZE_HEIGHT", "360"))
-DETECTION_NMS_IOU_THRESHOLD = float(os.getenv("DETECTION_NMS_IOU_THRESHOLD", "0.35"))
-PARTIAL_HUMAN_DETECTION_ENABLED = os.getenv("PARTIAL_HUMAN_DETECTION_ENABLED", "1").strip().lower() not in ("0", "false", "no")
-PARTIAL_CASCADE_SCALE_FACTOR = float(os.getenv("PARTIAL_CASCADE_SCALE_FACTOR", "1.05"))
-PARTIAL_CASCADE_MIN_NEIGHBORS = int(os.getenv("PARTIAL_CASCADE_MIN_NEIGHBORS", "3"))
-PARTIAL_CASCADE_MIN_SIZE = int(os.getenv("PARTIAL_CASCADE_MIN_SIZE", "24"))
-SKIN_PART_DETECTION_ENABLED = os.getenv("SKIN_PART_DETECTION_ENABLED", "1").strip().lower() not in ("0", "false", "no")
-SKIN_PART_MIN_AREA_RATIO = float(os.getenv("SKIN_PART_MIN_AREA_RATIO", "0.008"))
-SKIN_PART_CONFIDENCE = float(os.getenv("SKIN_PART_CONFIDENCE", "0.55"))
 VICTIM_COOLDOWN_S = 5.0             # min seconds between victim notifications
 
 # ─── CRC8 verification (must match ESP32 implementation) ─────────────────────
@@ -320,7 +318,7 @@ class PathTracker:
 
 # ─── CV Person Detector ───────────────────────────────────────────────────────
 
-class PersonDetector:
+class LegacyOpenCvPersonDetector:
     """
     HOG-based pedestrian detector using OpenCV's built-in descriptor.
     No external model files required — works offline in disaster scenarios.
@@ -523,6 +521,117 @@ class PersonDetector:
         return detections, annotated
 
 # ─── Session Logger ───────────────────────────────────────────────────────────
+
+class PersonDetector:
+    """
+    YOLOv8 Nano person detector.
+    Uses COCO class 0 (person), including partial/occluded people when YOLO can see enough signal.
+    """
+
+    def __init__(self):
+        self.available = CV_AVAILABLE and YOLO_AVAILABLE
+        self.model = None
+        self.last_error = None
+        self.last_detection_t = 0.0
+        self.frame_count = 0
+        self.detect_every_n = 1
+
+        if not CV_AVAILABLE:
+            self.last_error = "OpenCV unavailable"
+            logging.warning("OpenCV unavailable; YOLOv8 person detection disabled")
+            return
+
+        if not YOLO_AVAILABLE:
+            self.last_error = "Ultralytics unavailable"
+            logging.warning("Ultralytics unavailable; install pi_bridge requirements for YOLOv8 detection")
+            return
+
+        try:
+            self.model = YOLO(YOLO_MODEL_PATH)
+            logging.info(
+                "YOLOv8 person detector ready: model=%s, conf=%.2f, iou=%.2f, imgsz=%s, device=%s",
+                YOLO_MODEL_PATH,
+                YOLO_CONFIDENCE_THRESHOLD,
+                YOLO_IOU_THRESHOLD,
+                YOLO_IMAGE_SIZE,
+                YOLO_DEVICE,
+            )
+        except Exception as exc:
+            self.available = False
+            self.last_error = f"YOLO model load failed: {exc}"
+            logging.exception(self.last_error)
+
+    def detect(self, frame) -> tuple[list[dict], 'np.ndarray | None']:
+        """
+        Returns (detections, annotated_frame).
+        detections: list of {'x', 'y', 'w', 'h', 'confidence', 'label'}
+        """
+        if not self.available or self.model is None:
+            return [], None
+
+        annotated = frame.copy()
+        detections = []
+
+        try:
+            results = self.model.predict(
+                source=frame,
+                classes=[YOLO_PERSON_CLASS_ID],
+                conf=YOLO_CONFIDENCE_THRESHOLD,
+                iou=YOLO_IOU_THRESHOLD,
+                imgsz=YOLO_IMAGE_SIZE,
+                device=YOLO_DEVICE,
+                max_det=YOLO_MAX_DETECTIONS,
+                verbose=False,
+            )
+        except Exception as exc:
+            self.last_error = f"YOLO inference failed: {exc}"
+            logging.exception(self.last_error)
+            return [], annotated
+
+        self.last_error = None
+        for result in results:
+            boxes = getattr(result, "boxes", None)
+            if boxes is None:
+                continue
+
+            for box in boxes:
+                xyxy = box.xyxy[0].detach().cpu().numpy()
+                conf = float(box.conf[0].detach().cpu().item())
+                x1, y1, x2, y2 = [int(round(v)) for v in xyxy]
+                x1 = max(0, min(frame.shape[1] - 1, x1))
+                y1 = max(0, min(frame.shape[0] - 1, y1))
+                x2 = max(0, min(frame.shape[1], x2))
+                y2 = max(0, min(frame.shape[0], y2))
+                w = max(0, x2 - x1)
+                h = max(0, y2 - y1)
+                if w <= 0 or h <= 0:
+                    continue
+
+                detection = {
+                    'x': x1,
+                    'y': y1,
+                    'w': w,
+                    'h': h,
+                    'confidence': conf,
+                    'label': 'PERSON',
+                }
+                detections.append(detection)
+                cv2.rectangle(annotated, (x1, y1), (x1 + w, y1 + h), (0, 255, 0), 2)
+                cv2.putText(
+                    annotated,
+                    f"PERSON {conf:.2f}",
+                    (x1, max(15, y1 - 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    2,
+                )
+
+        if detections:
+            logging.info("YOLOv8 person detections: %s", detections)
+
+        return detections, annotated
+
 
 class SessionLogger:
     def __init__(self, log_dir: str):
@@ -895,18 +1004,17 @@ class CameraStreamer:
             "frame_count": self.frame_count,
             "last_frame_age_s": round(time.time() - self.last_frame_t, 2) if self.last_frame_t else None,
             "last_error": self.last_error,
-            "hog_hit_threshold": HOG_HIT_THRESHOLD,
-            "hog_final_threshold": HOG_FINAL_THRESHOLD,
-            "detection_threshold": DETECTION_CONFIDENCE_THRESHOLD,
+            "detector_backend": "yolov8n",
+            "yolo_available": YOLO_AVAILABLE,
+            "yolo_model_path": YOLO_MODEL_PATH,
+            "yolo_confidence_threshold": YOLO_CONFIDENCE_THRESHOLD,
+            "yolo_iou_threshold": YOLO_IOU_THRESHOLD,
+            "yolo_image_size": YOLO_IMAGE_SIZE,
+            "yolo_device": YOLO_DEVICE,
+            "yolo_max_detections": YOLO_MAX_DETECTIONS,
+            "detector_available": self.detector.available,
+            "detector_last_error": self.detector.last_error,
             "detection_interval_s": DETECTION_INTERVAL_S,
-            "detection_size": [DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT],
-            "detection_nms_iou_threshold": DETECTION_NMS_IOU_THRESHOLD,
-            "partial_human_detection_enabled": PARTIAL_HUMAN_DETECTION_ENABLED,
-            "partial_cascades": [name for name, _classifier, _confidence in self.detector.partial_cascades],
-            "partial_cascade_min_neighbors": PARTIAL_CASCADE_MIN_NEIGHBORS,
-            "partial_cascade_min_size": PARTIAL_CASCADE_MIN_SIZE,
-            "skin_part_detection_enabled": SKIN_PART_DETECTION_ENABLED,
-            "skin_part_min_area_ratio": SKIN_PART_MIN_AREA_RATIO,
             "detector_running": self.detector_running,
             "detection_count": self.detection_count,
             "last_detection_age_s": round(time.time() - self.last_detection_t, 2) if self.last_detection_t else None,

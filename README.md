@@ -13,7 +13,7 @@ ChirpyV2 is a sophisticated, full-stack disaster response robotics platform. It 
 *   **Manual Overrides**: Low-latency keyboard and UI-based controls (F, B, L, R, S) for direct intervention.
 
 ### 2. Survivor Interaction Module (SIM)
-*   **CV Victim Detection**: HOG-based person detection runs on the Raspberry Pi; automatically identifies survivors.
+*   **CV Victim Detection**: YOLOv8 Nano person detection runs on the Raspberry Pi; automatically identifies survivors.
 *   **Autonomous Triage**: Upon detection, the rover initiates a timed speech sequence to identify itself and gather vital triage data (Injuries, Mobility).
 *   **Advanced AI (OpenRouter)**: Integrated with OpenRouter (GPT-4o/Gemini) to provide context-aware, calm, and bounded responses to survivors.
 *   **Voice Interaction**: Offline Speech-to-Text via **Vosk** with prerecorded MP3 voice prompts for field deployments.
@@ -43,7 +43,7 @@ ChirpyV2 is a sophisticated, full-stack disaster response robotics platform. It 
 | Component | Technology |
 | :--- | :--- |
 | **Firmware** | C++/Arduino (ESP32 DevKit V1), L298N, MPU6050, HC-SR04 |
-| **Bridge** | Python 3, OpenCV (HOG), Vosk (STT), MP3 playback, aiohttp |
+| **Bridge** | Python 3, OpenCV, YOLOv8 Nano, Vosk (STT), MP3 playback, aiohttp |
 | **Backend** | Python, FastAPI, WebSockets, OpenRouter SDK |
 | **Frontend** | React, Leaflet (Maps), Chart.js, Styled Components |
 
@@ -134,20 +134,14 @@ OLED_HEIGHT=64
 OLED_FPS=8
 OLED_RETRY_DELAY_S=1.0
 CAMERA_INDEX=0
-HOG_HIT_THRESHOLD=-0.25
-HOG_FINAL_THRESHOLD=0
-DETECTION_CONFIDENCE_THRESHOLD=-0.25
+YOLO_MODEL_PATH=yolov8n.pt
+YOLO_CONFIDENCE_THRESHOLD=0.18
+YOLO_IOU_THRESHOLD=0.45
+YOLO_IMAGE_SIZE=416
+YOLO_DEVICE=cpu
+YOLO_MAX_DETECTIONS=10
+YOLO_PERSON_CLASS_ID=0
 DETECTION_INTERVAL_S=1.0
-DETECTION_RESIZE_WIDTH=480
-DETECTION_RESIZE_HEIGHT=360
-DETECTION_NMS_IOU_THRESHOLD=0.35
-PARTIAL_HUMAN_DETECTION_ENABLED=1
-PARTIAL_CASCADE_SCALE_FACTOR=1.05
-PARTIAL_CASCADE_MIN_NEIGHBORS=3
-PARTIAL_CASCADE_MIN_SIZE=24
-SKIN_PART_DETECTION_ENABLED=1
-SKIN_PART_MIN_AREA_RATIO=0.008
-SKIN_PART_CONFIDENCE=0.55
 ```
 
 Check OpenCV/camera status on the Pi:
