@@ -28,6 +28,7 @@ PANIC_WORDS = {"panic", "scared", "afraid", "terrified", "please"}
 AUDIO_PLAYER = os.getenv("AUDIO_PLAYER", "mpg123").strip().lower()
 AUDIO_OUTPUT_BACKEND = os.getenv("AUDIO_OUTPUT_BACKEND", "alsa").strip().lower()
 AUDIO_OUTPUT_DEVICE = os.getenv("AUDIO_OUTPUT_DEVICE", "").strip()
+DEMO_PC_AUDIO = os.getenv("DEMO_PC_AUDIO", "").strip().lower() in ("1", "true", "yes")
 
 
 def _which(name: str) -> str | None:
@@ -39,6 +40,80 @@ def _safe_basename(path: str) -> str:
 
 def _is_mp3(path: str) -> bool:
     return os.path.splitext(path)[1].lower() == ".mp3"
+
+
+def _play_via_sounddevice(path: str) -> bool:
+    """Decode and play audio via sounddevice for PC demo environments.
+
+    Uses ffmpeg to decode MP3 into raw PCM if necessary, or falls back to
+    pysoundfile if available. This avoids spawning ALSA/JACK-bound players.
+    """
+    if sd is None:
+        logging.warning("sounddevice not available; cannot play via PC backend")
+        return False
+
+    ffmpeg = _which("ffmpeg")
+    try:
+        if _is_mp3(path) and ffmpeg:
+            try:
+                import numpy as np
+            except Exception:
+                logging.warning("numpy required for ffmpeg->sounddevice playback")
+                return False
+
+            cmd = [
+                ffmpeg,
+                "-i",
+                path,
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                "-",
+            ]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if proc.returncode != 0 or not proc.stdout:
+                logging.warning("ffmpeg decode failed rc=%s stderr=%s", proc.returncode, (proc.stderr or b"").decode(errors="ignore")[:300])
+                return False
+
+            data = np.frombuffer(proc.stdout, dtype=np.int16)
+            try:
+                frames = data.reshape(-1, 2)
+            except Exception:
+                # If mono, reshape may fail; play raw buffer
+                try:
+                    sd.play(data, samplerate=44100)
+                    sd.wait()
+                    return True
+                except Exception as e:
+                    logging.warning("sounddevice playback failed: %s", e)
+                    return False
+
+            try:
+                sd.play(frames, samplerate=44100)
+                sd.wait()
+                return True
+            except Exception as e:
+                logging.warning("sounddevice playback failed: %s", e)
+                return False
+
+        # Try soundfile-based playback for other formats
+        try:
+            import soundfile as sf
+            data, sr = sf.read(path, dtype="float32")
+            sd.play(data, sr)
+            sd.wait()
+            return True
+        except Exception:
+            logging.debug("soundfile playback unavailable or failed; falling back")
+            return False
+    except Exception as e:
+        logging.warning("Exception during sounddevice playback: %s", e)
+        return False
 
 
 class SurvivorAudioFlow:
@@ -69,22 +144,36 @@ class SurvivorAudioFlow:
             logging.warning("Missing audio file: %s", path)
             return False
 
+        # If running a PC demo, prefer direct playback via sounddevice
+        if DEMO_PC_AUDIO and sd is not None:
+            try:
+                ok = _play_via_sounddevice(path)
+                if ok:
+                    return True
+            except Exception as e:
+                logging.warning("PC demo sounddevice playback failed: %s", e)
+
         commands = []
         mpg123 = _which("mpg123")
         ffplay = _which("ffplay")
         aplay = _which("aplay")
 
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and mpg123:
-            # Prefer ALSA with the known-working default device first.
-            device = AUDIO_OUTPUT_DEVICE or "default"
-            commands.append([mpg123, "-o", AUDIO_OUTPUT_BACKEND, "-a", device, "-q", path])
+            # If demoing on PC, avoid ALSA-specific flags which can trigger JACK.
+            if DEMO_PC_AUDIO or AUDIO_OUTPUT_BACKEND in ("pc", "none"):
+                commands.append([mpg123, "-q", path])
+            else:
+                # Prefer ALSA with the known-working default device first.
+                device = AUDIO_OUTPUT_DEVICE or "default"
+                commands.append([mpg123, "-o", AUDIO_OUTPUT_BACKEND, "-a", device, "-q", path])
 
-            # Some builds accept the device directly once ALSA is selected.
-            commands.append([mpg123, "-a", device, "-q", path])
+                # Some builds accept the device directly once ALSA is selected.
+                commands.append([mpg123, "-a", device, "-q", path])
 
-            # Keep a small fallback set in case the named device is unavailable.
-            commands.append([mpg123, "-q", path])
+                # Keep a small fallback set in case the named device is unavailable.
+                commands.append([mpg123, "-q", path])
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and ffplay:
+            # ffplay is generally safe cross-platform and doesn't require ALSA flags
             commands.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "error", path])
         if not _is_mp3(path) and AUDIO_PLAYER in ("auto", "aplay") and aplay:
             cmd = [aplay]
