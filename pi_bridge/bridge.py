@@ -407,6 +407,7 @@ class SerialBridge:
         self._lock          = threading.Lock()
         self._reconnect_delay = SERIAL_RECONNECT_BASE_S
         self._last_error_t  = 0.0
+        self._read_loop_started = False
 
         # Callbacks registered by caller
         self.on_packet  = None   # callable(dict)
@@ -497,6 +498,12 @@ class SerialBridge:
         Blocking read loop — run in dedicated thread.
         Processes incoming lines, verifies CRC, detects gaps, fires callbacks.
         """
+        with self._lock:
+            if self._read_loop_started:
+                logging.warning("Serial read loop already running; ignoring duplicate start")
+                return
+            self._read_loop_started = True
+
         buf = ""
         empty_reads = 0
         while True:
@@ -680,7 +687,7 @@ class CameraStreamer:
                         b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' +
                         frame + b'\r\n'
                     )
-                except (ConnectionResetError, asyncio.CancelledError):
+                except (ConnectionResetError, BrokenPipeError, OSError, asyncio.CancelledError):
                     break
             await asyncio.sleep(1 / 15)
 
@@ -713,11 +720,20 @@ class BackendRelay:
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=2),
             ) as resp:
-                await resp.release()
+                if resp.status >= 400:
+                    body = await resp.text()
+                    logging.warning("Backend HTTP %s %s: %s", resp.status, path, body[:200])
+                resp.release()
         except Exception as e:
             now = time.time()
             if now - self._last_error_t > 2.0:
-                logging.warning(f"Backend HTTP failed: {e}")
+                logging.warning(
+                    "Backend HTTP failed for %s%s: %s: %r",
+                    BACKEND_HTTP_URL.rstrip('/'),
+                    path,
+                    type(e).__name__,
+                    e,
+                )
                 self._last_error_t = now
 
     async def _dispatch(self, msg: dict):

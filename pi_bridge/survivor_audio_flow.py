@@ -91,10 +91,11 @@ class SurvivorAudioFlow:
         return False
 
     def _speak_fallback(self, text: str):
-        if shutil.which("espeak-ng"):
-            subprocess.run(["espeak-ng", "-s140", "-v", "en-us", text], check=False)
+        espeak = shutil.which("espeak-ng") or shutil.which("espeak")
+        if espeak:
+            subprocess.run([espeak, "-s140", "-v", "en-us", text], check=False)
         else:
-            logging.warning("espeak-ng not found for fallback speech")
+            logging.warning("No TTS engine found. Install espeak-ng for fallback speech.")
 
     def _listen_for_text(self) -> str:
         if not self.model or sd is None or KaldiRecognizer is None:

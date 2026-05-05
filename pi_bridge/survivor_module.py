@@ -7,6 +7,7 @@ import queue
 import logging
 import threading
 import asyncio
+import shutil
 import aiohttp
 
 # --- Configuration ---
@@ -30,11 +31,15 @@ from survivor_audio_flow import SurvivorAudioFlow
 
 def speak(text):
     print(f"TTS: {text}")
+    espeak = shutil.which("espeak-ng") or shutil.which("espeak")
+    if not espeak:
+        logging.warning("No TTS engine found. Install espeak-ng for spoken replies.")
+        return
+
     try:
-        # Using espeak-ng for instant offline feedback on Pi
-        subprocess.run(["espeak-ng", "-s140", "-v", "en-us", text], check=False)
-    except Exception as e:
-        print(f"Speak error: {e}")
+        subprocess.run([espeak, "-s140", "-v", "en-us", text], check=False)
+    except Exception:
+        logging.exception("Speak error")
 
 # --- Constants ---
 MODEL_PATH = "model" # Place a small Vosk model here: https://alphacephei.com/vosk/models
