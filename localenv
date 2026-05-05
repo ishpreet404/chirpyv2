@@ -10,8 +10,9 @@ BACKEND_WS_URL=ws://10.109.36.236:8000/ws/rover
 
 # Audio / OLED configuration for Raspberry Pi
 # Leave AUDIO_OUTPUT_DEVICE blank to use the Pi default Bluetooth output.
+AUDIO_ROOT=/home/avirath/chirpyv2/Audio Files
 AUDIO_PLAYER=mpg123
-AUDIO_OUTPUT_BACKEND=
+AUDIO_OUTPUT_BACKEND=alsa
 AUDIO_OUTPUT_DEVICE=default
 OLED_ENABLED=1
 OLED_I2C_BUS=1

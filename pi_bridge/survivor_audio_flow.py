@@ -26,7 +26,7 @@ HELP_WORDS = {"help", "save", "emergency", "danger"}
 PANIC_WORDS = {"panic", "scared", "afraid", "terrified", "please"}
 
 AUDIO_PLAYER = os.getenv("AUDIO_PLAYER", "mpg123").strip().lower()
-AUDIO_OUTPUT_BACKEND = os.getenv("AUDIO_OUTPUT_BACKEND", "").strip().lower()
+AUDIO_OUTPUT_BACKEND = os.getenv("AUDIO_OUTPUT_BACKEND", "alsa").strip().lower()
 AUDIO_OUTPUT_DEVICE = os.getenv("AUDIO_OUTPUT_DEVICE", "").strip()
 
 
@@ -75,13 +75,14 @@ class SurvivorAudioFlow:
         aplay = _which("aplay")
 
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and mpg123:
-            # Prefer the known-working default audio device first.
+            # Prefer ALSA with the known-working default device first.
             device = AUDIO_OUTPUT_DEVICE or "default"
+            commands.append([mpg123, "-o", AUDIO_OUTPUT_BACKEND, "-a", device, "-q", path])
+
+            # Some builds accept the device directly once ALSA is selected.
             commands.append([mpg123, "-a", device, "-q", path])
 
             # Keep a small fallback set in case the named device is unavailable.
-            if AUDIO_OUTPUT_BACKEND:
-                commands.append([mpg123, "-o", AUDIO_OUTPUT_BACKEND, "-q", path])
             commands.append([mpg123, "-q", path])
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and ffplay:
             commands.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "error", path])
