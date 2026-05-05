@@ -75,25 +75,14 @@ class SurvivorAudioFlow:
         aplay = _which("aplay")
 
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and mpg123:
-            backend_candidates = [AUDIO_OUTPUT_BACKEND] if AUDIO_OUTPUT_BACKEND else []
-            backend_candidates.extend(["alsa", "pulse"])
-            if not backend_candidates:
-                backend_candidates = [None]
+            # Prefer the known-working default audio device first.
+            device = AUDIO_OUTPUT_DEVICE or "default"
+            commands.append([mpg123, "-a", device, "-q", path])
 
-            seen = set()
-            for backend in backend_candidates:
-                cmd = [mpg123]
-                if backend and backend not in seen:
-                    cmd.extend(["-o", backend])
-                    seen.add(backend)
-                if AUDIO_OUTPUT_DEVICE:
-                    cmd.extend(["-a", AUDIO_OUTPUT_DEVICE])
-                cmd.extend(["-q", path])
-                commands.append(cmd)
-
-            # Last resort: let mpg123 pick its own compiled-in default backend.
-            if AUDIO_OUTPUT_BACKEND or AUDIO_OUTPUT_DEVICE:
-                commands.append([mpg123, "-q", path])
+            # Keep a small fallback set in case the named device is unavailable.
+            if AUDIO_OUTPUT_BACKEND:
+                commands.append([mpg123, "-o", AUDIO_OUTPUT_BACKEND, "-q", path])
+            commands.append([mpg123, "-q", path])
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and ffplay:
             commands.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "error", path])
         if not _is_mp3(path) and AUDIO_PLAYER in ("auto", "aplay") and aplay:
