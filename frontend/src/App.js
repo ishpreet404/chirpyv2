@@ -1345,6 +1345,94 @@ function PageButton({ active, onClick, children }) {
 	);
 }
 
+function SurvivorPage({ onNavigate, status, httpBase }) {
+	const [interactions, setInteractions] = useState([]);
+	const [isQuerying, setIsQuerying] = useState(false);
+
+	useEffect(() => {
+		const fetchInteractions = () => {
+			fetch(`${httpBase}/api/survivors`)
+				.then(r => r.json())
+				.then(d => { if (d.ok) setInteractions(d.survivors); })
+				.catch(e => console.error("Fetch survivors error", e));
+		};
+		fetchInteractions();
+		const id = setInterval(fetchInteractions, 3000);
+		return () => clearInterval(id);
+	}, [httpBase]);
+
+	return (
+		<div style={{ ...styles.app, overflow: "auto" }}>
+			<div style={styles.topBar}>
+				<div style={styles.logo}><span style={{ fontSize: 22 }}>⬡</span>SURVIVOR INTERACTION</div>
+				<div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+					<PageButton onClick={() => onNavigate("landing")}>Home</PageButton>
+					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
+					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
+					<PageButton active onClick={() => onNavigate("survivor")}>Survivor</PageButton>
+				</div>
+			</div>
+			<div style={{ padding: 22, display: "grid", gap: 16 }}>
+				<div style={{ display: "grid", gridTemplateColumns: "0.4fr 0.6fr", gap: 14 }}>
+					<div style={{ ...styles.panel, borderRadius: 24 }}>
+						<div style={styles.panelHeader}>TRIAGE STATUS</div>
+						<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
+							<div style={{ color: C.dimText, fontSize: 12, marginBottom: 10 }}>Latest detected survivor data</div>
+							<TelRow label="Can Move" value={interactions[0]?.responses?.can_move === false ? "NO" : "YES"} color={interactions[0]?.responses?.can_move === false ? C.red : C.green} />
+							<TelRow label="Conscious" value="YES" color={C.green} />
+							<TelRow label="Last contact" value={interactions[0]?.timestamp ? new Date(interactions[0].timestamp).toLocaleTimeString() : "N/A"} />
+							<div style={{ marginTop: 20, display: "grid", gap: 10 }}>
+								<button 
+									onClick={() => fetch(`${httpBase}/api/survivors/interaction`, { method: "POST", body: JSON.stringify({ transcript: "Who are you?", responses: {} }), headers: {"Content-Type": "application/json"} })}
+									style={{ ...heroPrimaryButton, width: "100%" }}
+								>
+									COMMAND: INTRODUCE SELF
+								</button>
+								<button 
+									onClick={() => fetch(`${httpBase}/api/survivors/interaction`, { method: "POST", body: JSON.stringify({ transcript: "Are you injured?", responses: {} }), headers: {"Content-Type": "application/json"} })}
+									style={{ ...heroSecondaryButton, width: "100%" }}
+								>
+									TRIAGE: INJURY CHECK
+								</button>
+								<button 
+									onClick={() => fetch(`${httpBase}/api/survivors/interaction`, { method: "POST", body: JSON.stringify({ transcript: "Can you move?", responses: {} }), headers: {"Content-Type": "application/json"} })}
+									style={{ ...heroSecondaryButton, width: "100%" }}
+								>
+									TRIAGE: MOBILITY CHECK
+								</button>
+							</div>
+						</div>
+					</div>
+					<div style={{ ...styles.panel, borderRadius: 24 }}>
+						<div style={styles.panelHeader}>CONVERSATION LOG</div>
+						<div style={{ ...styles.panelBody, padding: 0, maxHeight: 600, overflowY: "auto" }}>
+							{interactions.map(item => (
+								<div key={item.id} style={{ padding: 16, borderBottom: `1px solid ${C.border}` }}>
+									<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+										<span style={{ fontSize: 10, color: C.accent, fontWeight: 700 }}>SURVIVOR ID: {item.id}</span>
+										<span style={{ fontSize: 10, color: C.dimText }}>{new Date(item.timestamp).toLocaleString()}</span>
+									</div>
+									<div style={{ background: C.surface, padding: 12, borderRadius: 12, marginBottom: 8 }}>
+										<div style={{ fontSize: 10, color: C.dimText, marginBottom: 4 }}>TRANSCRIPT</div>
+										<div style={{ fontSize: 14, color: C.text }}>"{item.transcript}"</div>
+									</div>
+									{item.responses && (
+										<div style={{ display: "flex", gap: 6 }}>
+											{Object.entries(item.responses).map(([k, v]) => (
+												<Pill key={k} color={v === false ? C.red : C.green} bg={v === false ? "#2a1010" : "#102a10"}>{k}: {String(v)}</Pill>
+											))}
+										</div>
+									)}
+								</div>
+							)).reverse()}
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function HeroStat({ label, value, tone = C.text }) {
 	return (
 		<div style={{ background: "linear-gradient(180deg, rgba(22,27,34,0.96), rgba(16,19,24,0.98))", border: `1px solid rgba(255,255,255,0.06)`, borderRadius: 18, padding: 18, minHeight: 104, boxShadow: "0 16px 40px rgba(0,0,0,0.18)" }}>
@@ -1585,6 +1673,7 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 					<PageButton active onClick={() => onNavigate("landing")}>Home</PageButton>
 					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
 					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
+					<PageButton onClick={() => onNavigate("survivor")}>Survivor</PageButton>
 					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
 					<PageButton onClick={() => onNavigate("osint")}>OSINT</PageButton>
 				</div>
@@ -2155,6 +2244,16 @@ function App() {
 		return <OsintFinderPage onNavigate={navigate} />;
 	}
 
+	if (page === "survivor") {
+		return (
+			<SurvivorPage
+				onNavigate={navigate}
+				status={status}
+				httpBase={httpBase}
+			/>
+		);
+	}
+
 	return (
 		<div style={styles.app}>
 			{/* Top bar */}
@@ -2170,6 +2269,7 @@ function App() {
 					<PageButton active={page === "landing"} onClick={() => navigate("landing")}>Home</PageButton>
 					<PageButton active={page === "dashboard"} onClick={() => navigate("dashboard")}>Dashboard</PageButton>
 					<PageButton active={page === "map"} onClick={() => navigate("map")}>Map</PageButton>
+					<PageButton active={page === "survivor"} onClick={() => navigate("survivor")}>Survivor</PageButton>
 					<PageButton active={page === "archive"} onClick={() => navigate("archive")}>Archive</PageButton>
 					<PageButton active={page === "osint"} onClick={() => navigate("osint")}>OSINT</PageButton>
 				</div>
