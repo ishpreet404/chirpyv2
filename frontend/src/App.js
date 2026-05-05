@@ -48,6 +48,9 @@ const C = {
 const OSINT_API_URL = "https://leakosintapi.com/";
 const OSINT_API_TOKEN = "8518143178:mR452s1L";
 const ZONE_RADIUS_M = 0.5;
+const DASHBOARD_TOP_ROW_HEIGHT = 420;
+const ALERTS_MIN_HEIGHT = DASHBOARD_TOP_ROW_HEIGHT;
+const ALERTS_MAX_HEIGHT = DASHBOARD_TOP_ROW_HEIGHT;
 
 const OSINT_FIELD_TYPES = {
 	contact: ["email", "mail", "phone", "mobile", "tel"],
@@ -459,6 +462,7 @@ function SatelliteMapPanel({
 	setOrigin,
 	plannerMode,
 	onWaypointAdd,
+	panelHeight,
 }) {
 	const mapData = useMemo(() => {
 		const rawSegments = Array.isArray(pathData?.segments)
@@ -564,8 +568,12 @@ function SatelliteMapPanel({
 		}
 	};
 
+	const panelStyle = panelHeight
+		? { minHeight: panelHeight, maxHeight: panelHeight }
+		: { minHeight: 420 };
+
 	return (
-		<div style={{ ...styles.panel, minHeight: 420 }}>
+		<div style={{ ...styles.panel, ...panelStyle }}>
 			<div style={styles.panelHeader}>
 				SATELLITE MAP
 				<span style={{ float: "right", color: C.dimText, fontWeight: 400 }}>
@@ -1352,8 +1360,8 @@ function AlertsPanel({ alerts }) {
 			style={{
 				...styles.panel,
 				height: "auto",
-				minHeight: 260,
-				maxHeight: "100%",
+				minHeight: ALERTS_MIN_HEIGHT,
+				maxHeight: ALERTS_MAX_HEIGHT,
 			}}
 		>
 			<div style={styles.panelHeader}>
@@ -3524,6 +3532,7 @@ function App() {
 						telemetryHistory={telemetryHistory}
 						origin={mapOrigin}
 						setOrigin={setMapOrigin}
+						panelHeight={DASHBOARD_TOP_ROW_HEIGHT}
 					/>
 				</div>
 
@@ -3546,6 +3555,7 @@ function App() {
 					style={{
 						gridColumn: isMobile ? "1" : "3 / 4",
 						gridRow: isMobile ? "4" : "1 / 2",
+						alignSelf: "stretch",
 					}}
 				>
 					<AlertsPanel alerts={alerts} />
@@ -3558,7 +3568,7 @@ function App() {
 						gridRow: isMobile ? "5" : "2 / 3",
 					}}
 				>
-					<CameraPanel src={httpBase ? `${httpBase}/api/camera/stream` : ""} />
+					<CameraPanel src="http://10.108.194.26:8081/camera.mjpeg" />
 				</div>
 			</div>
 		</div>
