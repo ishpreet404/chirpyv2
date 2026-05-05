@@ -101,10 +101,20 @@ ENABLE_VICTIM_NOTIFY = False
 HOG_WIN_STRIDE   = (8, 8)
 HOG_PADDING      = (4, 4)
 HOG_SCALE        = 1.05
-DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", "0.15"))
+HOG_HIT_THRESHOLD = float(os.getenv("HOG_HIT_THRESHOLD", "-0.25"))
+HOG_FINAL_THRESHOLD = int(os.getenv("HOG_FINAL_THRESHOLD", "0"))
+DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", "-0.25"))
 DETECTION_INTERVAL_S = float(os.getenv("DETECTION_INTERVAL_S", "1.0"))
-DETECTION_RESIZE_WIDTH = int(os.getenv("DETECTION_RESIZE_WIDTH", "240"))
-DETECTION_RESIZE_HEIGHT = int(os.getenv("DETECTION_RESIZE_HEIGHT", "180"))
+DETECTION_RESIZE_WIDTH = int(os.getenv("DETECTION_RESIZE_WIDTH", "480"))
+DETECTION_RESIZE_HEIGHT = int(os.getenv("DETECTION_RESIZE_HEIGHT", "360"))
+DETECTION_NMS_IOU_THRESHOLD = float(os.getenv("DETECTION_NMS_IOU_THRESHOLD", "0.35"))
+PARTIAL_HUMAN_DETECTION_ENABLED = os.getenv("PARTIAL_HUMAN_DETECTION_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+PARTIAL_CASCADE_SCALE_FACTOR = float(os.getenv("PARTIAL_CASCADE_SCALE_FACTOR", "1.05"))
+PARTIAL_CASCADE_MIN_NEIGHBORS = int(os.getenv("PARTIAL_CASCADE_MIN_NEIGHBORS", "3"))
+PARTIAL_CASCADE_MIN_SIZE = int(os.getenv("PARTIAL_CASCADE_MIN_SIZE", "24"))
+SKIN_PART_DETECTION_ENABLED = os.getenv("SKIN_PART_DETECTION_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+SKIN_PART_MIN_AREA_RATIO = float(os.getenv("SKIN_PART_MIN_AREA_RATIO", "0.008"))
+SKIN_PART_CONFIDENCE = float(os.getenv("SKIN_PART_CONFIDENCE", "0.55"))
 VICTIM_COOLDOWN_S = 5.0             # min seconds between victim notifications
 
 # ─── CRC8 verification (must match ESP32 implementation) ─────────────────────
@@ -322,18 +332,124 @@ class PersonDetector:
         if CV_AVAILABLE:
             self.hog = cv2.HOGDescriptor()
             self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+            self.partial_cascades = self._load_partial_cascades()
             logging.info(
-                "OpenCV ready: %s, HOG threshold=%.2f, detection size=%sx%s",
+                "OpenCV ready: %s, HOG hit=%.2f, threshold=%.2f, final=%s, detection size=%sx%s, partial cascades=%s",
                 getattr(cv2, "__version__", "unknown"),
+                HOG_HIT_THRESHOLD,
                 DETECTION_CONFIDENCE_THRESHOLD,
+                HOG_FINAL_THRESHOLD,
                 DETECTION_RESIZE_WIDTH,
                 DETECTION_RESIZE_HEIGHT,
+                [name for name, _classifier, _confidence in self.partial_cascades],
             )
         else:
+            self.partial_cascades = []
             logging.warning("OpenCV unavailable; person detection disabled")
         self.last_detection_t = 0.0
         self.frame_count      = 0
         self.detect_every_n   = 1
+
+    @staticmethod
+    def _load_partial_cascades() -> list[tuple[str, object, float]]:
+        if not PARTIAL_HUMAN_DETECTION_ENABLED:
+            return []
+
+        cascade_specs = (
+            ("FACE", "haarcascade_frontalface_default.xml", 0.95),
+            ("PROFILE", "haarcascade_profileface.xml", 0.90),
+            ("UPPER_BODY", "haarcascade_upperbody.xml", 0.80),
+            ("LOWER_BODY", "haarcascade_lowerbody.xml", 0.75),
+            ("FULL_BODY", "haarcascade_fullbody.xml", 0.85),
+        )
+        cascade_dir = getattr(cv2.data, "haarcascades", "")
+        cascades = []
+
+        for label, filename, confidence in cascade_specs:
+            path = os.path.join(cascade_dir, filename)
+            classifier = cv2.CascadeClassifier(path)
+            if classifier.empty():
+                logging.warning("OpenCV partial human cascade unavailable: %s", path)
+                continue
+            cascades.append((label, classifier, confidence))
+
+        return cascades
+
+    @staticmethod
+    def _detect_skin_parts(frame, scale_x: float, scale_y: float) -> list[dict]:
+        if not SKIN_PART_DETECTION_ENABLED:
+            return []
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+
+        hsv_mask = cv2.inRange(hsv, np.array([0, 25, 45]), np.array([25, 255, 255]))
+        ycrcb_mask = cv2.inRange(ycrcb, np.array([0, 133, 77]), np.array([255, 173, 127]))
+        mask = cv2.bitwise_and(hsv_mask, ycrcb_mask)
+
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        min_area = frame.shape[0] * frame.shape[1] * SKIN_PART_MIN_AREA_RATIO
+        contours, _hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        detections = []
+
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < min_area:
+                continue
+
+            rx, ry, rw, rh = cv2.boundingRect(contour)
+            if rw <= 0 or rh <= 0:
+                continue
+
+            fill_ratio = area / float(rw * rh)
+            if fill_ratio < 0.25:
+                continue
+
+            detections.append({
+                'x': int(rx * scale_x),
+                'y': int(ry * scale_y),
+                'w': int(rw * scale_x),
+                'h': int(rh * scale_y),
+                'confidence': SKIN_PART_CONFIDENCE,
+                'label': 'HUMAN_PART',
+            })
+
+        return detections
+
+    @staticmethod
+    def _non_max_suppression(detections: list[dict], iou_threshold: float) -> list[dict]:
+        if len(detections) < 2:
+            return detections
+
+        picked = []
+        remaining = sorted(detections, key=lambda d: d['confidence'], reverse=True)
+        while remaining:
+            current = remaining.pop(0)
+            picked.append(current)
+            keep = []
+
+            current_area = current['w'] * current['h']
+            for candidate in remaining:
+                xx1 = max(current['x'], candidate['x'])
+                yy1 = max(current['y'], candidate['y'])
+                xx2 = min(current['x'] + current['w'], candidate['x'] + candidate['w'])
+                yy2 = min(current['y'] + current['h'], candidate['y'] + candidate['h'])
+                overlap_w = max(0, xx2 - xx1)
+                overlap_h = max(0, yy2 - yy1)
+                intersection = overlap_w * overlap_h
+                candidate_area = candidate['w'] * candidate['h']
+                union = current_area + candidate_area - intersection
+                iou = intersection / union if union else 0
+
+                if iou <= iou_threshold:
+                    keep.append(candidate)
+
+            remaining = keep
+
+        return picked
 
     def detect(self, frame) -> tuple[list[dict], 'np.ndarray | None']:
         """
@@ -343,12 +459,19 @@ class PersonDetector:
         if not self.available:
             return [], None
 
-        small = cv2.resize(frame, (DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT))
+        small_color = cv2.resize(frame, (DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT))
+        if len(small_color.shape) == 3:
+            small_gray = cv2.cvtColor(small_color, cv2.COLOR_BGR2GRAY)
+        else:
+            small_gray = small_color
+        small_gray = cv2.equalizeHist(small_gray)
         rects, weights = self.hog.detectMultiScale(
-            small,
+            small_gray,
+            hitThreshold=HOG_HIT_THRESHOLD,
             winStride=HOG_WIN_STRIDE,
             padding=HOG_PADDING,
             scale=HOG_SCALE,
+            finalThreshold=HOG_FINAL_THRESHOLD,
         )
 
         detections = []
@@ -356,6 +479,7 @@ class PersonDetector:
         scale_y = frame.shape[0] / DETECTION_RESIZE_HEIGHT
 
         annotated = frame.copy()
+        weights = np.ravel(weights)
         for i, (rx, ry, rw, rh) in enumerate(rects):
             conf = float(weights[i]) if i < len(weights) else 0.5
             if conf < DETECTION_CONFIDENCE_THRESHOLD:
@@ -364,9 +488,33 @@ class PersonDetector:
             y = int(ry * scale_y)
             w = int(rw * scale_x)
             h = int(rh * scale_y)
-            detections.append({'x': x, 'y': y, 'w': w, 'h': h, 'confidence': conf})
+            detections.append({'x': x, 'y': y, 'w': w, 'h': h, 'confidence': conf, 'label': 'PERSON'})
+
+        for label, classifier, confidence in self.partial_cascades:
+            rects = classifier.detectMultiScale(
+                small_gray,
+                scaleFactor=PARTIAL_CASCADE_SCALE_FACTOR,
+                minNeighbors=PARTIAL_CASCADE_MIN_NEIGHBORS,
+                minSize=(PARTIAL_CASCADE_MIN_SIZE, PARTIAL_CASCADE_MIN_SIZE),
+            )
+            for rx, ry, rw, rh in rects:
+                x = int(rx * scale_x)
+                y = int(ry * scale_y)
+                w = int(rw * scale_x)
+                h = int(rh * scale_y)
+                detections.append({'x': x, 'y': y, 'w': w, 'h': h, 'confidence': confidence, 'label': label})
+
+        detections.extend(self._detect_skin_parts(small_color, scale_x, scale_y))
+        detections = self._non_max_suppression(detections, DETECTION_NMS_IOU_THRESHOLD)
+        for detection in detections:
+            x = detection['x']
+            y = detection['y']
+            w = detection['w']
+            h = detection['h']
+            conf = detection['confidence']
+            label = detection.get('label', 'PERSON')
             cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(annotated, f'PERSON {conf:.2f}',
+            cv2.putText(annotated, f'{label} {conf:.2f}',
                         (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         if detections:
@@ -747,9 +895,18 @@ class CameraStreamer:
             "frame_count": self.frame_count,
             "last_frame_age_s": round(time.time() - self.last_frame_t, 2) if self.last_frame_t else None,
             "last_error": self.last_error,
+            "hog_hit_threshold": HOG_HIT_THRESHOLD,
+            "hog_final_threshold": HOG_FINAL_THRESHOLD,
             "detection_threshold": DETECTION_CONFIDENCE_THRESHOLD,
             "detection_interval_s": DETECTION_INTERVAL_S,
             "detection_size": [DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT],
+            "detection_nms_iou_threshold": DETECTION_NMS_IOU_THRESHOLD,
+            "partial_human_detection_enabled": PARTIAL_HUMAN_DETECTION_ENABLED,
+            "partial_cascades": [name for name, _classifier, _confidence in self.detector.partial_cascades],
+            "partial_cascade_min_neighbors": PARTIAL_CASCADE_MIN_NEIGHBORS,
+            "partial_cascade_min_size": PARTIAL_CASCADE_MIN_SIZE,
+            "skin_part_detection_enabled": SKIN_PART_DETECTION_ENABLED,
+            "skin_part_min_area_ratio": SKIN_PART_MIN_AREA_RATIO,
             "detector_running": self.detector_running,
             "detection_count": self.detection_count,
             "last_detection_age_s": round(time.time() - self.last_detection_t, 2) if self.last_detection_t else None,
