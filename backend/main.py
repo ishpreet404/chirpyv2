@@ -479,15 +479,25 @@ async def _run_motion_mode(mode: str, cancel_event: asyncio.Event):
     preset = MODE_PRESETS.get(mode, {})
     try:
         if mode == "square":
+            # Break long side movements into small chunks so operation
+            # remains stable in tight/obstructed spaces.
             side_cm = float(preset.get("side_cm", 60.0))
             turn_deg = float(preset.get("turn_deg", 90.0))
             pause_s = float(preset.get("pause_s", 0.2))
-            forward_time = side_cm / WHEEL_VELOCITY_CMS
+            chunk_cm = float(preset.get("chunk_cm", 10.0))
+
+            # Number of forward chunks per side
+            chunks = max(1, int(math.ceil(side_cm / chunk_cm)))
+            single_dist = side_cm / chunks
+            forward_time = single_dist / WHEEL_VELOCITY_CMS
             turn_time = turn_deg / PIVOT_RATE_DEGS
 
             for _ in range(4):
-                if await _command_for_duration("F", forward_time, cancel_event):
-                    return
+                for _c in range(chunks):
+                    if await _command_for_duration("F", forward_time, cancel_event):
+                        return
+                    if await _sleep_with_cancel(0.05, cancel_event):
+                        return
                 if await _sleep_with_cancel(pause_s, cancel_event):
                     return
                 if await _command_for_duration("R", turn_time, cancel_event):
@@ -496,19 +506,27 @@ async def _run_motion_mode(mode: str, cancel_event: asyncio.Event):
                     return
 
         elif mode == "circle":
+            # Use step_deg slices to approximate a circle. Break each slice
+            # into small forward chunks for tight-area operation.
             radius_cm = float(preset.get("radius_cm", 30.0))
             step_deg = float(preset.get("step_deg", 10.0))
             pause_s = float(preset.get("pause_s", 0.05))
+            chunk_cm = float(preset.get("chunk_cm", 5.0))
+
             steps = max(3, int(360.0 / step_deg))
             step_distance = 2.0 * math.pi * radius_cm * (step_deg / 360.0)
-            forward_time = step_distance / WHEEL_VELOCITY_CMS
+            # Break each step into smaller forward chunks
+            subchunks = max(1, int(math.ceil(step_distance / chunk_cm)))
+            single_dist = step_distance / subchunks
+            forward_time = single_dist / WHEEL_VELOCITY_CMS
             turn_time = step_deg / PIVOT_RATE_DEGS
 
             for _ in range(steps):
-                if await _command_for_duration("F", forward_time, cancel_event):
-                    return
-                if await _sleep_with_cancel(pause_s, cancel_event):
-                    return
+                for _c in range(subchunks):
+                    if await _command_for_duration("F", forward_time, cancel_event):
+                        return
+                    if await _sleep_with_cancel(0.03, cancel_event):
+                        return
                 if await _command_for_duration("R", turn_time, cancel_event):
                     return
                 if await _sleep_with_cancel(pause_s, cancel_event):
