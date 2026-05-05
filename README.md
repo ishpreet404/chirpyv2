@@ -118,6 +118,12 @@ AUDIO_PLAYER=mpg123
 AUDIO_OUTPUT_DEVICE=bluealsa:DEV=AA:BB:CC:DD:EE:FF,PROFILE=a2dp
 ```
 
+To test the same prerecorded survivor flow that victim detection triggers:
+```bash
+cd ~/chirpyv2
+python3 -c "import sys; sys.path.insert(0, 'pi_bridge'); from survivor_module import SurvivorModule; SurvivorModule().ask_questions()"
+```
+
 For the I2C OLED eyes display, enable I2C and install the Pi bridge requirements. The default display is SSD1306 at address `0x3C` on I2C bus `1`:
 ```env
 OLED_ENABLED=1

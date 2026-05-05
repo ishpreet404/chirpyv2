@@ -165,8 +165,7 @@ class SurvivorAudioFlow:
 
     def run_interaction(self, report_cb: Callable[[str, str, str], None]):
         if not self.model:
-            logging.warning("Vosk model missing; speech-to-text disabled")
-            return
+            logging.warning("Vosk model missing; prompts will play but responses will not be transcribed")
 
         ok_folder = os.path.join(self.audio_root, "Are you Ok")
         ok_question = os.path.join(ok_folder, "QUES.mp3")

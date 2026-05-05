@@ -45,6 +45,7 @@ class SurvivorModule:
 
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         audio_root = os.path.join(repo_root, "Audio Files")
+        logging.info("Survivor audio root: %s", audio_root)
 
         self.running = True
         self.responses = {}
@@ -87,8 +88,7 @@ class SurvivorModule:
     def ask_questions(self):
         """Run the scripted Q&A flow with recorded audio prompts."""
         if not self.model:
-            logging.warning("Speech model not available; skipping Q&A flow")
-            return
+            logging.warning("Speech model not available; playing prompts without speech recognition")
         if not self._interaction_lock.acquire(blocking=False):
             return
 
