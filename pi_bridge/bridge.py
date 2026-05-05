@@ -470,8 +470,13 @@ class SerialBridge:
         if cmd not in SUPPORTED_COMMANDS:
             logging.warning(f"Ignoring unsupported command: {cmd}")
             return
+        
+        # Determine wire format (no prefix for legacy firmware)
+        wire_cmd = f"{cmd}\n"
+        
         with self._lock:
-            self.cmd_queue.append(f"{SERIAL_FRAME_START}{cmd}\n")
+            self.cmd_queue.append(wire_cmd)
+            logging.info(f"Queued command for ESP32: {cmd}")
 
     def _flush_commands(self):
         """Send all queued commands — call from read loop thread."""
