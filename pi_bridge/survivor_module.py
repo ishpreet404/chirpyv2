@@ -27,6 +27,26 @@ MODEL_PATH = "model" # Place a small Vosk model here: https://alphacephei.com/vo
 SAMPLERATE = 16000
 BACKEND_URL = os.getenv("BACKEND_HTTP_URL", "http://localhost:8000")
 
+
+def _resolve_audio_root() -> str:
+    explicit = os.getenv("AUDIO_ROOT", "").strip()
+    if explicit and os.path.isdir(explicit):
+        return explicit
+
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, ".."))
+    candidates = [
+        os.path.join(repo_root, "Audio Files"),
+        os.path.join(repo_root, "audio files"),
+        os.path.join(script_dir, "Audio Files"),
+        os.path.join(script_dir, "audio files"),
+    ]
+    for candidate in candidates:
+        if os.path.isdir(candidate):
+            return candidate
+
+    return os.path.join(repo_root, "Audio Files")
+
 class SurvivorModule:
     def __init__(self, model_path=None):
         if model_path is None:
@@ -43,8 +63,7 @@ class SurvivorModule:
         else:
             self.model = Model(model_path)
 
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        audio_root = os.path.join(repo_root, "Audio Files")
+        audio_root = _resolve_audio_root()
         logging.info("Survivor audio root: %s", audio_root)
 
         self.running = True

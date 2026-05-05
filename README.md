@@ -115,7 +115,8 @@ python3 bridge.py
 For Bluetooth audio, pair/connect the speaker in Raspberry Pi OS and make it the default output/input. The MP3 voice flow uses `AUDIO_PLAYER=mpg123` by default. If playback is silent because the Bluetooth speaker is not the default ALSA device, set `AUDIO_OUTPUT_DEVICE` in `localenv`, for example:
 ```env
 AUDIO_PLAYER=mpg123
-AUDIO_OUTPUT_DEVICE=bluealsa:DEV=AA:BB:CC:DD:EE:FF,PROFILE=a2dp
+AUDIO_OUTPUT_BACKEND=
+AUDIO_OUTPUT_DEVICE=default
 ```
 
 To test the same prerecorded survivor flow that victim detection triggers:
@@ -134,9 +135,18 @@ OLED_HEIGHT=64
 OLED_FPS=8
 OLED_RETRY_DELAY_S=1.0
 CAMERA_INDEX=0
+CAMERA_WIDTH=640
+CAMERA_HEIGHT=480
+CAMERA_FPS=12
+STREAM_WIDTH=480
+STREAM_HEIGHT=360
+STREAM_FPS=10
+STREAM_JPEG_QUALITY=55
 HOG_HIT_THRESHOLD=0.0
 HOG_FINAL_THRESHOLD=2
 DETECTION_INTERVAL_S=1.0
+DETECTION_RESIZE_WIDTH=320
+DETECTION_RESIZE_HEIGHT=240
 ```
 
 Check OpenCV/camera status on the Pi:

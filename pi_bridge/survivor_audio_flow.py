@@ -25,8 +25,14 @@ NO_WORDS = {"no", "nope", "negative", "nah"}
 HELP_WORDS = {"help", "save", "emergency", "danger"}
 PANIC_WORDS = {"panic", "scared", "afraid", "terrified", "please"}
 
-AUDIO_PLAYER = os.getenv("AUDIO_PLAYER", "auto").strip().lower()
-AUDIO_OUTPUT_DEVICE = os.getenv("AUDIO_OUTPUT_DEVICE", "").strip()
+def _get_audio_config():
+    """Get audio configuration from environment variables (lazy loading)."""
+    return {
+        'AUDIO_PLAYER': os.getenv("AUDIO_PLAYER", "mpg123").strip().lower(),
+        'AUDIO_OUTPUT_BACKEND': os.getenv("AUDIO_OUTPUT_BACKEND", "alsa").strip().lower(),
+        'AUDIO_OUTPUT_DEVICE': os.getenv("AUDIO_OUTPUT_DEVICE", "").strip(),
+        'DEMO_PC_AUDIO': os.getenv("DEMO_PC_AUDIO", "").strip().lower() in ("1", "true", "yes"),
+    }
 
 
 def _which(name: str) -> str | None:
@@ -38,6 +44,101 @@ def _safe_basename(path: str) -> str:
 
 def _is_mp3(path: str) -> bool:
     return os.path.splitext(path)[1].lower() == ".mp3"
+
+
+def _play_via_sounddevice(path: str) -> bool:
+    """Decode and play audio via sounddevice for PC demo environments.
+
+    Uses ffmpeg to decode MP3 into raw PCM if necessary, or falls back to
+    pysoundfile if available. This avoids spawning ALSA/JACK-bound players.
+    """
+    if sd is None:
+        logging.warning("sounddevice not available; cannot play via PC backend")
+        return False
+
+    ffmpeg = _which("ffmpeg")
+    logging.debug("[sounddevice] Starting playback for: %s (ffmpeg=%s)", path, ffmpeg)
+    
+    # Debug: List available audio devices
+    try:
+        devices = sd.query_devices()
+        default_dev = sd.default.device
+        logging.debug("[sounddevice] Available devices: %s | Default: %s", devices, default_dev)
+    except Exception as e:
+        logging.debug("[sounddevice] Could not query devices: %s", e)
+    
+    try:
+        if _is_mp3(path) and ffmpeg:
+            try:
+                import numpy as np
+            except Exception:
+                logging.warning("numpy required for ffmpeg->sounddevice playback")
+                return False
+
+            cmd = [
+                ffmpeg,
+                "-i",
+                path,
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                "-",
+            ]
+            logging.debug("[sounddevice] Running ffmpeg: %s", " ".join(cmd))
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            if proc.returncode != 0:
+                logging.warning("[sounddevice] ffmpeg failed rc=%s stderr=%s", proc.returncode, (proc.stderr or b"").decode(errors="ignore")[:500])
+                return False
+            
+            if not proc.stdout:
+                logging.warning("[sounddevice] ffmpeg produced no output")
+                return False
+            
+            logging.debug("[sounddevice] ffmpeg produced %d bytes of PCM data", len(proc.stdout))
+            
+            try:
+                data = np.frombuffer(proc.stdout, dtype=np.int16)
+                logging.debug("[sounddevice] Loaded %d samples from PCM", len(data))
+                
+                # Try stereo reshape first
+                if len(data) % 2 == 0:
+                    frames = data.reshape(-1, 2)
+                    logging.debug("[sounddevice] Reshaped to stereo: %s", frames.shape)
+                else:
+                    logging.warning("[sounddevice] PCM length not divisible by 2; playing as mono")
+                    frames = data.reshape(-1, 1)
+                
+                logging.info("[sounddevice] Playing %s samples at 44100 Hz...", len(data))
+                sd.play(frames, samplerate=44100)
+                logging.debug("[sounddevice] sd.play() called; waiting for completion...")
+                sd.wait()
+                logging.info("[sounddevice] Playback completed successfully")
+                return True
+            except Exception as e:
+                logging.warning("[sounddevice] Playback failed during reshape/play: %s", e, exc_info=True)
+                return False
+
+        # Try soundfile-based playback for other formats
+        try:
+            import soundfile as sf
+            logging.debug("[sounddevice] Attempting soundfile playback for non-MP3")
+            data, sr = sf.read(path, dtype="float32")
+            logging.debug("[sounddevice] soundfile loaded %d samples at %d Hz", len(data), sr)
+            sd.play(data, sr)
+            sd.wait()
+            return True
+        except Exception as e:
+            logging.debug("[sounddevice] soundfile playback unavailable or failed: %s", e)
+            return False
+    except Exception as e:
+        logging.warning("[sounddevice] Exception during sounddevice playback: %s", e, exc_info=True)
+        return False
 
 
 class SurvivorAudioFlow:
@@ -68,22 +169,50 @@ class SurvivorAudioFlow:
             logging.warning("Missing audio file: %s", path)
             return False
 
+        config = _get_audio_config()
+        DEMO_PC_AUDIO = config['DEMO_PC_AUDIO']
+        AUDIO_PLAYER = config['AUDIO_PLAYER']
+        AUDIO_OUTPUT_BACKEND = config['AUDIO_OUTPUT_BACKEND']
+        AUDIO_OUTPUT_DEVICE = config['AUDIO_OUTPUT_DEVICE']
+
+        logging.info("[_play_audio] Starting for: %s (DEMO_PC_AUDIO=%s, sd=%s)", path, DEMO_PC_AUDIO, sd is not None)
+
+        # If running a PC demo, prefer direct playback via sounddevice
+        if DEMO_PC_AUDIO and sd is not None:
+            try:
+                logging.info("[_play_audio] Attempting sounddevice playback (PC demo mode)")
+                ok = _play_via_sounddevice(path)
+                if ok:
+                    logging.info("[_play_audio] ✓ Sounddevice playback succeeded")
+                    return True
+                else:
+                    logging.warning("[_play_audio] Sounddevice returned False; falling back to external players")
+            except Exception as e:
+                logging.warning("[_play_audio] PC demo sounddevice playback exception: %s", e, exc_info=True)
+
         commands = []
         mpg123 = _which("mpg123")
         ffplay = _which("ffplay")
         aplay = _which("aplay")
 
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and mpg123:
-            cmd = [mpg123, "-q"]
-            if AUDIO_OUTPUT_DEVICE:
-                cmd.extend(["-a", AUDIO_OUTPUT_DEVICE])
-            cmd.append(path)
-            commands.append(cmd)
-            if AUDIO_OUTPUT_DEVICE:
+            # If demoing on PC, avoid ALSA-specific flags which can trigger JACK.
+            if DEMO_PC_AUDIO or AUDIO_OUTPUT_BACKEND in ("pc", "none"):
+                commands.append([mpg123, "-q", path])
+            else:
+                # Prefer ALSA with the known-working default device first.
+                device = AUDIO_OUTPUT_DEVICE or "default"
+                commands.append([mpg123, "-o", AUDIO_OUTPUT_BACKEND, "-a", device, "-q", path])
+
+                # Some builds accept the device directly once ALSA is selected.
+                commands.append([mpg123, "-a", device, "-q", path])
+
+                # Keep a small fallback set in case the named device is unavailable.
                 commands.append([mpg123, "-q", path])
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and ffplay:
+            # ffplay is generally safe cross-platform and doesn't require ALSA flags
             commands.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "error", path])
-        if AUDIO_PLAYER in ("auto", "aplay") and aplay:
+        if not _is_mp3(path) and AUDIO_PLAYER in ("auto", "aplay") and aplay:
             cmd = [aplay]
             if AUDIO_OUTPUT_DEVICE:
                 cmd.extend(["-D", AUDIO_OUTPUT_DEVICE])
@@ -94,8 +223,9 @@ class SurvivorAudioFlow:
 
         if not commands:
             logging.warning(
-                "No audio player command available. AUDIO_PLAYER=%r PATH=%r mpg123=%r ffplay=%r aplay=%r",
+                "No audio player command available. AUDIO_PLAYER=%r AUDIO_OUTPUT_BACKEND=%r PATH=%r mpg123=%r ffplay=%r aplay=%r",
                 AUDIO_PLAYER,
+                AUDIO_OUTPUT_BACKEND,
                 os.getenv("PATH", ""),
                 mpg123,
                 ffplay,
@@ -104,18 +234,19 @@ class SurvivorAudioFlow:
             return False
 
         for cmd in commands:
-            logging.info("Playing audio: %s", " ".join(cmd))
+            logging.info("[_play_audio] Trying: %s", " ".join(cmd))
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if result.returncode == 0:
+                logging.info("[_play_audio] ✓ Success with: %s", " ".join(cmd[:2]))
                 return True
             logging.warning(
-                "Audio player failed rc=%s stderr=%s",
+                "[_play_audio] Failed rc=%s stderr=%s",
                 result.returncode,
                 (result.stderr or result.stdout or "").strip()[:300],
             )
 
         logging.warning(
-            "No audio output worked for %s. Install mpg123 and set AUDIO_OUTPUT_DEVICE if Bluetooth is not default.",
+            "[_play_audio] All methods failed for %s. Install mpg123 and set AUDIO_OUTPUT_DEVICE if Bluetooth is not default.",
             path,
         )
         return False

@@ -43,9 +43,6 @@ class OledEyes:
             logging.warning("OLED eyes unavailable. Install luma.oled and pillow.")
             return
 
-        if not self._init_device():
-            return
-
         self._thread = threading.Thread(target=self._animate, daemon=True)
         self._thread.start()
         logging.info("OLED eyes started on I2C bus %s address 0x%02X", self.port, self.address)
@@ -78,6 +75,10 @@ class OledEyes:
         gaze_y = 0.0
 
         while not self._stop.is_set():
+            if self._device is None and not self._init_device():
+                time.sleep(self.retry_delay_s)
+                continue
+
             image = Image.new("1", (self.width, self.height), 0)
             draw = ImageDraw.Draw(image)
 
@@ -110,7 +111,7 @@ class OledEyes:
                     exc,
                 )
                 time.sleep(self.retry_delay_s)
-                self._init_device()
+                self._device = None
                 continue
 
             frame += 1
