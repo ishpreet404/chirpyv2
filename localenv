@@ -1,5 +1,5 @@
 # IP configuration for backend + Pi bridge
-PI_BRIDGE_URL=http://10.108.194.236:8081
+PI_BRIDGE_URL=http://10.108.194.26:8081
 BACKEND_WS_URL=ws://10.108.194.236:8000/ws/rover
 BACKEND_HTTP_URL=http://10.108.194.236:8000
 
