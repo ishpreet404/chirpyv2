@@ -21,6 +21,8 @@ OLED_I2C_BUS="1"
 OLED_I2C_ADDRESS="0x3C"
 OLED_WIDTH="128"
 OLED_HEIGHT="64"
+OLED_FPS="8"
+OLED_RETRY_DELAY_S="1.0"
 
 if [ -f "$LOCALENV" ]; then
   existing_key="$(grep -E '^OPENROUTER_API_KEY=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
@@ -34,6 +36,8 @@ if [ -f "$LOCALENV" ]; then
   existing_oled_address="$(grep -E '^OLED_I2C_ADDRESS=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   existing_oled_width="$(grep -E '^OLED_WIDTH=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   existing_oled_height="$(grep -E '^OLED_HEIGHT=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
+  existing_oled_fps="$(grep -E '^OLED_FPS=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
+  existing_oled_retry_delay="$(grep -E '^OLED_RETRY_DELAY_S=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   [ -n "$existing_audio_player" ] && AUDIO_PLAYER="$existing_audio_player"
   AUDIO_OUTPUT_DEVICE="$existing_audio_output"
   [ -n "$existing_oled_enabled" ] && OLED_ENABLED="$existing_oled_enabled"
@@ -41,6 +45,8 @@ if [ -f "$LOCALENV" ]; then
   [ -n "$existing_oled_address" ] && OLED_I2C_ADDRESS="$existing_oled_address"
   [ -n "$existing_oled_width" ] && OLED_WIDTH="$existing_oled_width"
   [ -n "$existing_oled_height" ] && OLED_HEIGHT="$existing_oled_height"
+  [ -n "$existing_oled_fps" ] && OLED_FPS="$existing_oled_fps"
+  [ -n "$existing_oled_retry_delay" ] && OLED_RETRY_DELAY_S="$existing_oled_retry_delay"
 fi
 
 cat > "$LOCALENV" <<EOF
@@ -63,6 +69,8 @@ OLED_I2C_BUS=$OLED_I2C_BUS
 OLED_I2C_ADDRESS=$OLED_I2C_ADDRESS
 OLED_WIDTH=$OLED_WIDTH
 OLED_HEIGHT=$OLED_HEIGHT
+OLED_FPS=$OLED_FPS
+OLED_RETRY_DELAY_S=$OLED_RETRY_DELAY_S
 
 # OpenRouter Configuration
 OPENROUTER_API_KEY=$OPENROUTER_API_KEY

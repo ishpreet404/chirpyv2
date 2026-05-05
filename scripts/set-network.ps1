@@ -21,6 +21,8 @@ $oledI2cBus = "1"
 $oledI2cAddress = "0x3C"
 $oledWidth = "128"
 $oledHeight = "64"
+$oledFps = "8"
+$oledRetryDelay = "1.0"
 if (Test-Path $localEnvPath) {
     foreach ($line in [System.IO.File]::ReadAllLines($localEnvPath)) {
         if ($line -match "^\s*OPENROUTER_API_KEY=(.*)$") {
@@ -36,6 +38,8 @@ if (Test-Path $localEnvPath) {
         if ($line -match "^\s*OLED_I2C_ADDRESS=(.*)$") { $oledI2cAddress = $Matches[1] }
         if ($line -match "^\s*OLED_WIDTH=(.*)$") { $oledWidth = $Matches[1] }
         if ($line -match "^\s*OLED_HEIGHT=(.*)$") { $oledHeight = $Matches[1] }
+        if ($line -match "^\s*OLED_FPS=(.*)$") { $oledFps = $Matches[1] }
+        if ($line -match "^\s*OLED_RETRY_DELAY_S=(.*)$") { $oledRetryDelay = $Matches[1] }
     }
 }
 
@@ -59,6 +63,8 @@ $localEnv = @(
     "OLED_I2C_ADDRESS=$oledI2cAddress",
     "OLED_WIDTH=$oledWidth",
     "OLED_HEIGHT=$oledHeight",
+    "OLED_FPS=$oledFps",
+    "OLED_RETRY_DELAY_S=$oledRetryDelay",
     "",
     "# OpenRouter Configuration",
     "OPENROUTER_API_KEY=$openRouterKey",
