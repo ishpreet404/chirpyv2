@@ -1358,7 +1358,26 @@ function TelemetryChart({ history }) {
 
 // ─── Alerts panel ───────────────────────────────────────────────────────────
 
+function getAlertTime(alert) {
+	const time = new Date(alert?.timestamp || 0).getTime();
+	return Number.isFinite(time) ? time : 0;
+}
+
 function AlertsPanel({ alerts }) {
+	const alertsBodyRef = useRef(null);
+	const visibleAlerts = useMemo(
+		() => [...alerts].sort((a, b) => getAlertTime(b) - getAlertTime(a)),
+		[alerts],
+	);
+	const newestAlertKey =
+		visibleAlerts[0]?.id || visibleAlerts[0]?.timestamp || visibleAlerts[0]?.message || null;
+
+	useEffect(() => {
+		if (alertsBodyRef.current) {
+			alertsBodyRef.current.scrollTop = 0;
+		}
+	}, [newestAlertKey]);
+
 	return (
 		<div
 			style={{
@@ -1371,10 +1390,11 @@ function AlertsPanel({ alerts }) {
 			<div style={styles.panelHeader}>
 				ALERTS
 				<span style={{ float: "right", color: C.red }}>
-					{alerts.filter((a) => a.level === "critical").length} CRIT
+					{visibleAlerts.filter((a) => a.level === "critical").length} CRIT
 				</span>
 			</div>
 			<div
+				ref={alertsBodyRef}
 				style={{
 					...styles.panelBody,
 					padding: "8px",
@@ -1382,7 +1402,7 @@ function AlertsPanel({ alerts }) {
 					maxHeight: "100%",
 				}}
 			>
-				{alerts.length === 0 && (
+				{visibleAlerts.length === 0 && (
 					<div
 						style={{
 							color: C.dimText,
@@ -1394,7 +1414,7 @@ function AlertsPanel({ alerts }) {
 						No alerts
 					</div>
 				)}
-				{alerts.map((a) => (
+				{visibleAlerts.map((a) => (
 					<div
 						key={a.id}
 						style={{
