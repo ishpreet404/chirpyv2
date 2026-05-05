@@ -47,6 +47,9 @@ const C = {
 const OSINT_API_URL = "https://leakosintapi.com/";
 const OSINT_API_TOKEN = "8518143178:mR452s1L";
 const ZONE_RADIUS_M = 0.5;
+const DASHBOARD_TOP_ROW_HEIGHT = 420;
+const ALERTS_MIN_HEIGHT = DASHBOARD_TOP_ROW_HEIGHT;
+const ALERTS_MAX_HEIGHT = DASHBOARD_TOP_ROW_HEIGHT;
 
 const OSINT_FIELD_TYPES = {
 	contact: ["email", "mail", "phone", "mobile", "tel"],
@@ -397,6 +400,7 @@ function SatelliteMapPanel({
 	setOrigin,
 	plannerMode,
 	onWaypointAdd,
+	panelHeight,
 }) {
 	const mapData = useMemo(() => {
 		const rawSegments = Array.isArray(pathData?.segments) ? pathData.segments : [];
@@ -481,8 +485,12 @@ function SatelliteMapPanel({
 		}
 	};
 
+	const panelStyle = panelHeight
+		? { minHeight: panelHeight, maxHeight: panelHeight }
+		: { minHeight: 420 };
+
 	return (
-		<div style={{ ...styles.panel, minHeight: 420 }}>
+		<div style={{ ...styles.panel, ...panelStyle }}>
 			<div style={styles.panelHeader}>
 				SATELLITE MAP
 				<span style={{ float: "right", color: C.dimText, fontWeight: 400 }}>
@@ -1176,14 +1184,21 @@ function TelemetryChart({ history }) {
 
 function AlertsPanel({ alerts }) {
 	return (
-		<div style={{ ...styles.panel, height: "auto", minHeight: 260, maxHeight: "100%" }}>
+		<div
+			style={{
+				...styles.panel,
+				height: "auto",
+				minHeight: ALERTS_MIN_HEIGHT,
+				maxHeight: ALERTS_MAX_HEIGHT,
+			}}
+		>
 			<div style={styles.panelHeader}>
 				ALERTS
 				<span style={{ float: "right", color: C.red }}>
 					{alerts.filter((a) => a.level === "critical").length} CRIT
 				</span>
 			</div>
-			<div style={{ ...styles.panelBody, padding: "8px", overflowY: "auto", maxHeight: "100%" }}>
+			<div style={{ ...styles.panelBody, padding: "8px", overflowY: "auto" }}>
 				{alerts.length === 0 && (
 					<div
 						style={{
@@ -2547,6 +2562,7 @@ function App() {
 						telemetryHistory={telemetryHistory}
 						origin={mapOrigin}
 						setOrigin={setMapOrigin}
+						panelHeight={DASHBOARD_TOP_ROW_HEIGHT}
 					/>
 				</div>
 
@@ -2569,6 +2585,7 @@ function App() {
 					style={{
 						gridColumn: isMobile ? "1" : "3 / 4",
 						gridRow: isMobile ? "4" : "1 / 2",
+						alignSelf: "stretch",
 					}}
 				>
 					<AlertsPanel alerts={alerts} />
