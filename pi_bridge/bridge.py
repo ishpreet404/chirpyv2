@@ -775,6 +775,13 @@ class RoverBridge:
         self.relay     = BackendRelay()
         self.tracker   = PathTracker()
         self.logger    = SessionLogger(LOG_DIR)
+        self.oled_eyes = None
+
+        try:
+            from oled_eyes import OledEyes
+            self.oled_eyes = OledEyes()
+        except Exception as exc:
+            logging.warning("OLED eyes unavailable: %s", exc)
 
         # Survivor Interaction Module
         self.survivor_active = False
@@ -907,6 +914,10 @@ class RoverBridge:
 
         # Start camera streamer
         self.camera.start()
+
+        # Start OLED eyes if configured and available
+        if self.oled_eyes:
+            self.oled_eyes.start()
 
         # Start serial read thread
         if not self.serial.connect():

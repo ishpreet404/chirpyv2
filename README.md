@@ -108,8 +108,23 @@ npm start
 ### 4. Start Pi Bridge
 ```bash
 cd pi_bridge
-# Ensure portaudio19-dev is installed for the Bluetooth/input microphone path
+# Ensure portaudio19-dev and mpg123 are installed for Bluetooth mic/audio playback
 python3 bridge.py
+```
+
+For Bluetooth audio, pair/connect the speaker in Raspberry Pi OS and make it the default output/input. The MP3 voice flow uses `AUDIO_PLAYER=mpg123` by default. If playback is silent because the Bluetooth speaker is not the default ALSA device, set `AUDIO_OUTPUT_DEVICE` in `localenv`, for example:
+```env
+AUDIO_PLAYER=mpg123
+AUDIO_OUTPUT_DEVICE=bluealsa:DEV=AA:BB:CC:DD:EE:FF,PROFILE=a2dp
+```
+
+For the I2C OLED eyes display, enable I2C and install the Pi bridge requirements. The default display is SSD1306 at address `0x3C` on I2C bus `1`:
+```env
+OLED_ENABLED=1
+OLED_I2C_BUS=1
+OLED_I2C_ADDRESS=0x3C
+OLED_WIDTH=128
+OLED_HEIGHT=64
 ```
 
 ---

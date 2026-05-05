@@ -8,6 +8,16 @@ PI_BRIDGE_WS=ws://10.109.36.26:8081
 BACKEND_HTTP_URL=http://10.109.36.236:8000
 BACKEND_WS_URL=ws://10.109.36.236:8000/ws/rover
 
+# Audio / OLED configuration for Raspberry Pi
+# Leave AUDIO_OUTPUT_DEVICE blank to use the Pi default Bluetooth output.
+AUDIO_PLAYER=mpg123
+AUDIO_OUTPUT_DEVICE=
+OLED_ENABLED=1
+OLED_I2C_BUS=1
+OLED_I2C_ADDRESS=0x3C
+OLED_WIDTH=128
+OLED_HEIGHT=64
+
 # OpenRouter Configuration
 OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=openai/gpt-4o-mini

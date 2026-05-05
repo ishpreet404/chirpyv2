@@ -5,3 +5,5 @@ numpy==1.26.4
 python-dotenv==1.0.1
 sounddevice==0.4.6
 vosk==0.3.45
+luma.oled==3.14.0
+Pillow==10.4.0

@@ -6,7 +6,7 @@ import queue
 import shutil
 import subprocess
 import time
-from typing import Callable, Optional
+from typing import Callable
 
 try:
     import sounddevice as sd
@@ -24,6 +24,9 @@ NO_WORDS = {"no", "nope", "negative", "nah"}
 
 HELP_WORDS = {"help", "save", "emergency", "danger"}
 PANIC_WORDS = {"panic", "scared", "afraid", "terrified", "please"}
+
+AUDIO_PLAYER = os.getenv("AUDIO_PLAYER", "auto").strip().lower()
+AUDIO_OUTPUT_DEVICE = os.getenv("AUDIO_OUTPUT_DEVICE", "").strip()
 
 def _safe_basename(path: str) -> str:
     return os.path.splitext(os.path.basename(path))[0]
@@ -61,19 +64,37 @@ class SurvivorAudioFlow:
             logging.warning("Missing audio file: %s", path)
             return False
 
-        if _is_mp3(path):
-            if shutil.which("mpg123"):
-                subprocess.run(["mpg123", "-q", path], check=False)
-                return True
-            if shutil.which("ffplay"):
-                subprocess.run(["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path], check=False)
-                return True
+        commands = []
+        if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and shutil.which("mpg123"):
+            cmd = ["mpg123", "-q"]
+            if AUDIO_OUTPUT_DEVICE:
+                cmd.extend(["-a", AUDIO_OUTPUT_DEVICE])
+            cmd.append(path)
+            commands.append(cmd)
+        if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and shutil.which("ffplay"):
+            commands.append(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", path])
+        if AUDIO_PLAYER in ("auto", "aplay") and shutil.which("aplay"):
+            cmd = ["aplay"]
+            if AUDIO_OUTPUT_DEVICE:
+                cmd.extend(["-D", AUDIO_OUTPUT_DEVICE])
+            cmd.append(path)
+            commands.append(cmd)
 
-        if shutil.which("aplay"):
-            subprocess.run(["aplay", path], check=False)
-            return True
+        for cmd in commands:
+            logging.info("Playing audio: %s", " ".join(cmd))
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0:
+                return True
+            logging.warning(
+                "Audio player failed rc=%s stderr=%s",
+                result.returncode,
+                (result.stderr or result.stdout or "").strip()[:300],
+            )
 
-        logging.warning("No suitable audio player found for %s", path)
+        logging.warning(
+            "No audio output worked for %s. Install mpg123 and set AUDIO_OUTPUT_DEVICE if Bluetooth is not default.",
+            path,
+        )
         return False
 
     def _listen_for_text(self) -> str:
