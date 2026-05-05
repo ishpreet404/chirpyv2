@@ -24,7 +24,10 @@ OLED_HEIGHT="64"
 OLED_FPS="8"
 OLED_RETRY_DELAY_S="1.0"
 CAMERA_INDEX="0"
-DETECTION_CONFIDENCE_THRESHOLD="0.35"
+DETECTION_CONFIDENCE_THRESHOLD="0.15"
+DETECTION_INTERVAL_S="1.0"
+DETECTION_RESIZE_WIDTH="240"
+DETECTION_RESIZE_HEIGHT="180"
 
 if [ -f "$LOCALENV" ]; then
   existing_key="$(grep -E '^OPENROUTER_API_KEY=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
@@ -42,6 +45,9 @@ if [ -f "$LOCALENV" ]; then
   existing_oled_retry_delay="$(grep -E '^OLED_RETRY_DELAY_S=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   existing_camera_index="$(grep -E '^CAMERA_INDEX=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   existing_detection_threshold="$(grep -E '^DETECTION_CONFIDENCE_THRESHOLD=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
+  existing_detection_interval="$(grep -E '^DETECTION_INTERVAL_S=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
+  existing_detection_resize_width="$(grep -E '^DETECTION_RESIZE_WIDTH=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
+  existing_detection_resize_height="$(grep -E '^DETECTION_RESIZE_HEIGHT=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   [ -n "$existing_audio_player" ] && AUDIO_PLAYER="$existing_audio_player"
   AUDIO_OUTPUT_DEVICE="$existing_audio_output"
   [ -n "$existing_oled_enabled" ] && OLED_ENABLED="$existing_oled_enabled"
@@ -53,6 +59,9 @@ if [ -f "$LOCALENV" ]; then
   [ -n "$existing_oled_retry_delay" ] && OLED_RETRY_DELAY_S="$existing_oled_retry_delay"
   [ -n "$existing_camera_index" ] && CAMERA_INDEX="$existing_camera_index"
   [ -n "$existing_detection_threshold" ] && DETECTION_CONFIDENCE_THRESHOLD="$existing_detection_threshold"
+  [ -n "$existing_detection_interval" ] && DETECTION_INTERVAL_S="$existing_detection_interval"
+  [ -n "$existing_detection_resize_width" ] && DETECTION_RESIZE_WIDTH="$existing_detection_resize_width"
+  [ -n "$existing_detection_resize_height" ] && DETECTION_RESIZE_HEIGHT="$existing_detection_resize_height"
 fi
 
 cat > "$LOCALENV" <<EOF
@@ -79,6 +88,9 @@ OLED_FPS=$OLED_FPS
 OLED_RETRY_DELAY_S=$OLED_RETRY_DELAY_S
 CAMERA_INDEX=$CAMERA_INDEX
 DETECTION_CONFIDENCE_THRESHOLD=$DETECTION_CONFIDENCE_THRESHOLD
+DETECTION_INTERVAL_S=$DETECTION_INTERVAL_S
+DETECTION_RESIZE_WIDTH=$DETECTION_RESIZE_WIDTH
+DETECTION_RESIZE_HEIGHT=$DETECTION_RESIZE_HEIGHT
 
 # OpenRouter Configuration
 OPENROUTER_API_KEY=$OPENROUTER_API_KEY

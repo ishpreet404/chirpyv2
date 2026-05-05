@@ -24,7 +24,10 @@ $oledHeight = "64"
 $oledFps = "8"
 $oledRetryDelay = "1.0"
 $cameraIndex = "0"
-$detectionConfidenceThreshold = "0.35"
+$detectionConfidenceThreshold = "0.15"
+$detectionInterval = "1.0"
+$detectionResizeWidth = "240"
+$detectionResizeHeight = "180"
 if (Test-Path $localEnvPath) {
     foreach ($line in [System.IO.File]::ReadAllLines($localEnvPath)) {
         if ($line -match "^\s*OPENROUTER_API_KEY=(.*)$") {
@@ -44,6 +47,9 @@ if (Test-Path $localEnvPath) {
         if ($line -match "^\s*OLED_RETRY_DELAY_S=(.*)$") { $oledRetryDelay = $Matches[1] }
         if ($line -match "^\s*CAMERA_INDEX=(.*)$") { $cameraIndex = $Matches[1] }
         if ($line -match "^\s*DETECTION_CONFIDENCE_THRESHOLD=(.*)$") { $detectionConfidenceThreshold = $Matches[1] }
+        if ($line -match "^\s*DETECTION_INTERVAL_S=(.*)$") { $detectionInterval = $Matches[1] }
+        if ($line -match "^\s*DETECTION_RESIZE_WIDTH=(.*)$") { $detectionResizeWidth = $Matches[1] }
+        if ($line -match "^\s*DETECTION_RESIZE_HEIGHT=(.*)$") { $detectionResizeHeight = $Matches[1] }
     }
 }
 
@@ -71,6 +77,9 @@ $localEnv = @(
     "OLED_RETRY_DELAY_S=$oledRetryDelay",
     "CAMERA_INDEX=$cameraIndex",
     "DETECTION_CONFIDENCE_THRESHOLD=$detectionConfidenceThreshold",
+    "DETECTION_INTERVAL_S=$detectionInterval",
+    "DETECTION_RESIZE_WIDTH=$detectionResizeWidth",
+    "DETECTION_RESIZE_HEIGHT=$detectionResizeHeight",
     "",
     "# OpenRouter Configuration",
     "OPENROUTER_API_KEY=$openRouterKey",

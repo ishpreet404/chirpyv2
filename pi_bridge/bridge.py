@@ -101,7 +101,10 @@ ENABLE_VICTIM_NOTIFY = False
 HOG_WIN_STRIDE   = (8, 8)
 HOG_PADDING      = (4, 4)
 HOG_SCALE        = 1.05
-DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", "0.35"))
+DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", "0.15"))
+DETECTION_INTERVAL_S = float(os.getenv("DETECTION_INTERVAL_S", "1.0"))
+DETECTION_RESIZE_WIDTH = int(os.getenv("DETECTION_RESIZE_WIDTH", "240"))
+DETECTION_RESIZE_HEIGHT = int(os.getenv("DETECTION_RESIZE_HEIGHT", "180"))
 VICTIM_COOLDOWN_S = 5.0             # min seconds between victim notifications
 
 # ─── CRC8 verification (must match ESP32 implementation) ─────────────────────
@@ -320,15 +323,17 @@ class PersonDetector:
             self.hog = cv2.HOGDescriptor()
             self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
             logging.info(
-                "OpenCV ready: %s, HOG threshold=%.2f",
+                "OpenCV ready: %s, HOG threshold=%.2f, detection size=%sx%s",
                 getattr(cv2, "__version__", "unknown"),
                 DETECTION_CONFIDENCE_THRESHOLD,
+                DETECTION_RESIZE_WIDTH,
+                DETECTION_RESIZE_HEIGHT,
             )
         else:
             logging.warning("OpenCV unavailable; person detection disabled")
         self.last_detection_t = 0.0
         self.frame_count      = 0
-        self.detect_every_n   = 5  # run detection every 5th frame (CPU budget)
+        self.detect_every_n   = 1
 
     def detect(self, frame) -> tuple[list[dict], 'np.ndarray | None']:
         """
@@ -338,11 +343,7 @@ class PersonDetector:
         if not self.available:
             return [], None
 
-        self.frame_count += 1
-        if self.frame_count % self.detect_every_n != 0:
-            return [], frame
-
-        small = cv2.resize(frame, (320, 240))
+        small = cv2.resize(frame, (DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT))
         rects, weights = self.hog.detectMultiScale(
             small,
             winStride=HOG_WIN_STRIDE,
@@ -351,8 +352,8 @@ class PersonDetector:
         )
 
         detections = []
-        scale_x = frame.shape[1] / 320
-        scale_y = frame.shape[0] / 240
+        scale_x = frame.shape[1] / DETECTION_RESIZE_WIDTH
+        scale_y = frame.shape[0] / DETECTION_RESIZE_HEIGHT
 
         annotated = frame.copy()
         for i, (rx, ry, rw, rh) in enumerate(rects):
@@ -628,6 +629,7 @@ class CameraStreamer:
         self.detector      = detector
         self.cap           = None
         self.latest_frame  : bytes | None = None  # JPEG bytes
+        self.latest_raw_frame = None
         self.latest_detections: list[dict] = []
         self._lock         = threading.Lock()
         self.on_person_detected = None  # callable(list[dict])
@@ -637,6 +639,9 @@ class CameraStreamer:
         self.last_frame_t = 0.0
         self.last_error = None
         self.camera_opened = False
+        self.detector_running = False
+        self.detection_count = 0
+        self.last_detection_t = 0.0
 
     def _capture_loop(self):
         if not CV_AVAILABLE:
@@ -672,11 +677,8 @@ class CameraStreamer:
             self.frame_count += 1
             self.last_frame_t = time.time()
 
-            detections, annotated = self.detector.detect(frame)
-            display = annotated if annotated is not None else frame
-
             # JPEG encode
-            ret2, jpeg = cv2.imencode('.jpg', display, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            ret2, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ret2:
                 self.last_error = "JPEG encode failed"
                 logging.warning(self.last_error)
@@ -684,6 +686,28 @@ class CameraStreamer:
 
             with self._lock:
                 self.latest_frame      = jpeg.tobytes()
+                self.latest_raw_frame  = frame.copy()
+        self.running = False
+
+    def _detection_loop(self):
+        if not CV_AVAILABLE or not self.detector.available:
+            return
+
+        self.detector_running = True
+        while True:
+            with self._lock:
+                frame = None if self.latest_raw_frame is None else self.latest_raw_frame.copy()
+
+            if frame is None:
+                time.sleep(0.2)
+                continue
+
+            start = time.time()
+            detections, _annotated = self.detector.detect(frame)
+            self.detection_count += 1
+            self.last_detection_t = time.time()
+
+            with self._lock:
                 self.latest_detections = detections
 
             # Notify on new person detections (with cooldown)
@@ -693,11 +717,14 @@ class CameraStreamer:
                     self._last_victim_t = now
                     self.on_person_detected(detections)
 
-            time.sleep(1 / 15)
+            elapsed = time.time() - start
+            time.sleep(max(0.1, DETECTION_INTERVAL_S - elapsed))
 
     def start(self):
-        t = threading.Thread(target=self._capture_loop, daemon=True)
-        t.start()
+        capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+        detect_thread = threading.Thread(target=self._detection_loop, daemon=True)
+        capture_thread.start()
+        detect_thread.start()
 
     def get_frame(self) -> bytes | None:
         with self._lock:
@@ -721,7 +748,11 @@ class CameraStreamer:
             "last_frame_age_s": round(time.time() - self.last_frame_t, 2) if self.last_frame_t else None,
             "last_error": self.last_error,
             "detection_threshold": DETECTION_CONFIDENCE_THRESHOLD,
-            "detect_every_n": self.detector.detect_every_n,
+            "detection_interval_s": DETECTION_INTERVAL_S,
+            "detection_size": [DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT],
+            "detector_running": self.detector_running,
+            "detection_count": self.detection_count,
+            "last_detection_age_s": round(time.time() - self.last_detection_t, 2) if self.last_detection_t else None,
             "latest_detections": detections,
         }
 
