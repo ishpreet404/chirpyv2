@@ -87,7 +87,7 @@ SERIAL_ERROR_LOG_THROTTLE_S = 2.0
 PC_IP            = os.getenv("PC_IP", "10.109.36.236").strip('"\'')
 BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL") or f"ws://{PC_IP}:8000/ws/rover"
 BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL") or f"http://{PC_IP}:8000"
-CAMERA_INDEX     = 0
+CAMERA_INDEX     = int(os.getenv("CAMERA_INDEX", "0"))
 CAMERA_PORT      = 8081             # MJPEG stream port
 HEARTBEAT_INTERVAL_S = 2.0          # Send P command every 2s
 LOG_DIR          = os.path.expanduser("~/rover_logs")
@@ -101,7 +101,7 @@ ENABLE_VICTIM_NOTIFY = False
 HOG_WIN_STRIDE   = (8, 8)
 HOG_PADDING      = (4, 4)
 HOG_SCALE        = 1.05
-DETECTION_CONFIDENCE_THRESHOLD = 0.5
+DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", "0.35"))
 VICTIM_COOLDOWN_S = 5.0             # min seconds between victim notifications
 
 # ─── CRC8 verification (must match ESP32 implementation) ─────────────────────
@@ -319,6 +319,13 @@ class PersonDetector:
         if CV_AVAILABLE:
             self.hog = cv2.HOGDescriptor()
             self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+            logging.info(
+                "OpenCV ready: %s, HOG threshold=%.2f",
+                getattr(cv2, "__version__", "unknown"),
+                DETECTION_CONFIDENCE_THRESHOLD,
+            )
+        else:
+            logging.warning("OpenCV unavailable; person detection disabled")
         self.last_detection_t = 0.0
         self.frame_count      = 0
         self.detect_every_n   = 5  # run detection every 5th frame (CPU budget)
@@ -360,6 +367,9 @@ class PersonDetector:
             cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(annotated, f'PERSON {conf:.2f}',
                         (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        if detections:
+            logging.info("OpenCV person detections: %s", detections)
 
         return detections, annotated
 
@@ -622,20 +632,45 @@ class CameraStreamer:
         self._lock         = threading.Lock()
         self.on_person_detected = None  # callable(list[dict])
         self._last_victim_t = 0.0
+        self.running = False
+        self.frame_count = 0
+        self.last_frame_t = 0.0
+        self.last_error = None
+        self.camera_opened = False
 
     def _capture_loop(self):
         if not CV_AVAILABLE:
+            self.last_error = "OpenCV import failed"
+            logging.warning("Camera streamer not started because OpenCV is unavailable")
             return
+        logging.info("Opening camera index %s", CAMERA_INDEX)
         self.cap = cv2.VideoCapture(CAMERA_INDEX)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.cap.set(cv2.CAP_PROP_FPS, 15)
+        self.camera_opened = bool(self.cap.isOpened())
+        if not self.camera_opened:
+            self.last_error = f"Camera index {CAMERA_INDEX} did not open"
+            logging.error(self.last_error)
+            return
+
+        self.running = True
+        logging.info("Camera opened index=%s", CAMERA_INDEX)
+        failed_reads = 0
 
         while True:
             ret, frame = self.cap.read()
             if not ret:
+                failed_reads += 1
+                self.last_error = f"Camera read failed ({failed_reads} consecutive)"
+                if failed_reads == 1 or failed_reads % 30 == 0:
+                    logging.warning(self.last_error)
                 time.sleep(0.1)
                 continue
+            failed_reads = 0
+            self.last_error = None
+            self.frame_count += 1
+            self.last_frame_t = time.time()
 
             detections, annotated = self.detector.detect(frame)
             display = annotated if annotated is not None else frame
@@ -643,6 +678,8 @@ class CameraStreamer:
             # JPEG encode
             ret2, jpeg = cv2.imencode('.jpg', display, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ret2:
+                self.last_error = "JPEG encode failed"
+                logging.warning(self.last_error)
                 continue
 
             with self._lock:
@@ -669,6 +706,24 @@ class CameraStreamer:
     def get_detections(self) -> list[dict]:
         with self._lock:
             return self.latest_detections[:]
+
+    def status(self) -> dict:
+        with self._lock:
+            detections = self.latest_detections[:]
+            has_frame = self.latest_frame is not None
+        return {
+            "cv_available": CV_AVAILABLE,
+            "camera_index": CAMERA_INDEX,
+            "camera_opened": self.camera_opened,
+            "running": self.running,
+            "has_frame": has_frame,
+            "frame_count": self.frame_count,
+            "last_frame_age_s": round(time.time() - self.last_frame_t, 2) if self.last_frame_t else None,
+            "last_error": self.last_error,
+            "detection_threshold": DETECTION_CONFIDENCE_THRESHOLD,
+            "detect_every_n": self.detector.detect_every_n,
+            "latest_detections": detections,
+        }
 
     async def mjpeg_handler(self, request):
         """aiohttp request handler for MJPEG stream."""
@@ -889,6 +944,7 @@ class RoverBridge:
                 'obstacles':     len(self.tracker.obstacle_map),
                 'victims':       len(self.tracker.victim_locations),
             },
+            'camera':           self.camera.status(),
         }
         return web.json_response(data)
 
@@ -905,6 +961,9 @@ class RoverBridge:
 
     async def api_victims(self, request):
         return web.json_response(self.tracker.victim_locations)
+
+    async def api_camera_status(self, request):
+        return web.json_response(self.camera.status())
 
     # ── App runner ───────────────────────────────────────────────────────────
 
@@ -933,6 +992,7 @@ class RoverBridge:
         app.router.add_post('/command',        self.api_command)
         app.router.add_get('/path',            self.api_path)
         app.router.add_get('/victims',         self.api_victims)
+        app.router.add_get('/camera/status',   self.api_camera_status)
         app.router.add_get('/camera.mjpeg',    self.camera.mjpeg_handler)
 
         # CORS headers for all routes

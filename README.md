@@ -133,6 +133,18 @@ OLED_WIDTH=128
 OLED_HEIGHT=64
 OLED_FPS=8
 OLED_RETRY_DELAY_S=1.0
+CAMERA_INDEX=0
+DETECTION_CONFIDENCE_THRESHOLD=0.35
+```
+
+Check OpenCV/camera status on the Pi:
+```bash
+curl http://10.109.36.26:8081/camera/status
+```
+
+If `camera_opened` is false, try another camera index in `localenv`:
+```env
+CAMERA_INDEX=1
 ```
 
 ---

@@ -23,6 +23,8 @@ OLED_WIDTH="128"
 OLED_HEIGHT="64"
 OLED_FPS="8"
 OLED_RETRY_DELAY_S="1.0"
+CAMERA_INDEX="0"
+DETECTION_CONFIDENCE_THRESHOLD="0.35"
 
 if [ -f "$LOCALENV" ]; then
   existing_key="$(grep -E '^OPENROUTER_API_KEY=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
@@ -38,6 +40,8 @@ if [ -f "$LOCALENV" ]; then
   existing_oled_height="$(grep -E '^OLED_HEIGHT=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   existing_oled_fps="$(grep -E '^OLED_FPS=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   existing_oled_retry_delay="$(grep -E '^OLED_RETRY_DELAY_S=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
+  existing_camera_index="$(grep -E '^CAMERA_INDEX=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
+  existing_detection_threshold="$(grep -E '^DETECTION_CONFIDENCE_THRESHOLD=' "$LOCALENV" | tail -n 1 | cut -d= -f2- || true)"
   [ -n "$existing_audio_player" ] && AUDIO_PLAYER="$existing_audio_player"
   AUDIO_OUTPUT_DEVICE="$existing_audio_output"
   [ -n "$existing_oled_enabled" ] && OLED_ENABLED="$existing_oled_enabled"
@@ -47,6 +51,8 @@ if [ -f "$LOCALENV" ]; then
   [ -n "$existing_oled_height" ] && OLED_HEIGHT="$existing_oled_height"
   [ -n "$existing_oled_fps" ] && OLED_FPS="$existing_oled_fps"
   [ -n "$existing_oled_retry_delay" ] && OLED_RETRY_DELAY_S="$existing_oled_retry_delay"
+  [ -n "$existing_camera_index" ] && CAMERA_INDEX="$existing_camera_index"
+  [ -n "$existing_detection_threshold" ] && DETECTION_CONFIDENCE_THRESHOLD="$existing_detection_threshold"
 fi
 
 cat > "$LOCALENV" <<EOF
@@ -71,6 +77,8 @@ OLED_WIDTH=$OLED_WIDTH
 OLED_HEIGHT=$OLED_HEIGHT
 OLED_FPS=$OLED_FPS
 OLED_RETRY_DELAY_S=$OLED_RETRY_DELAY_S
+CAMERA_INDEX=$CAMERA_INDEX
+DETECTION_CONFIDENCE_THRESHOLD=$DETECTION_CONFIDENCE_THRESHOLD
 
 # OpenRouter Configuration
 OPENROUTER_API_KEY=$OPENROUTER_API_KEY
