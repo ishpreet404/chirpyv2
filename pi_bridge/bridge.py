@@ -89,6 +89,13 @@ BACKEND_WS_URL   = os.getenv("BACKEND_WS_URL") or f"ws://{PC_IP}:8000/ws/rover"
 BACKEND_HTTP_URL = os.getenv("BACKEND_HTTP_URL") or f"http://{PC_IP}:8000"
 CAMERA_INDEX     = int(os.getenv("CAMERA_INDEX", "0"))
 CAMERA_PORT      = 8081             # MJPEG stream port
+CAMERA_WIDTH     = int(os.getenv("CAMERA_WIDTH", "640"))
+CAMERA_HEIGHT    = int(os.getenv("CAMERA_HEIGHT", "480"))
+CAMERA_FPS       = int(os.getenv("CAMERA_FPS", "12"))
+STREAM_WIDTH     = int(os.getenv("STREAM_WIDTH", str(CAMERA_WIDTH)))
+STREAM_HEIGHT    = int(os.getenv("STREAM_HEIGHT", str(CAMERA_HEIGHT)))
+STREAM_FPS       = float(os.getenv("STREAM_FPS", "10"))
+STREAM_JPEG_QUALITY = int(os.getenv("STREAM_JPEG_QUALITY", "55"))
 HEARTBEAT_INTERVAL_S = 2.0          # Send P command every 2s
 LOG_DIR          = os.path.expanduser("~/rover_logs")
 
@@ -104,6 +111,8 @@ HOG_SCALE = 1.05
 HOG_HIT_THRESHOLD = float(os.getenv("HOG_HIT_THRESHOLD", "0.0"))
 HOG_FINAL_THRESHOLD = int(os.getenv("HOG_FINAL_THRESHOLD", "2"))
 DETECTION_INTERVAL_S = float(os.getenv("DETECTION_INTERVAL_S", "1.0"))
+DETECTION_RESIZE_WIDTH = int(os.getenv("DETECTION_RESIZE_WIDTH", "320"))
+DETECTION_RESIZE_HEIGHT = int(os.getenv("DETECTION_RESIZE_HEIGHT", "240"))
 VICTIM_COOLDOWN_S = 5.0             # min seconds between victim notifications
 
 # ─── CRC8 verification (must match ESP32 implementation) ─────────────────────
@@ -333,13 +342,15 @@ class PersonDetector:
         self.hog = cv2.HOGDescriptor()
         self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
         logging.info(
-            "Basic OpenCV HOG detector ready: cv=%s, hit=%.2f, final=%s, stride=%s, padding=%s, scale=%.2f",
+            "Basic OpenCV HOG detector ready: cv=%s, hit=%.2f, final=%s, stride=%s, padding=%s, scale=%.2f, size=%sx%s",
             getattr(cv2, "__version__", "unknown"),
             HOG_HIT_THRESHOLD,
             HOG_FINAL_THRESHOLD,
             HOG_WIN_STRIDE,
             HOG_PADDING,
             HOG_SCALE,
+            DETECTION_RESIZE_WIDTH,
+            DETECTION_RESIZE_HEIGHT,
         )
 
     def detect(self, frame) -> tuple[list[dict], 'np.ndarray | None']:
@@ -666,9 +677,10 @@ class CameraStreamer:
             return
         logging.info("Opening camera index %s", CAMERA_INDEX)
         self.cap = cv2.VideoCapture(CAMERA_INDEX)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 15)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+        self.cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.camera_opened = bool(self.cap.isOpened())
         if not self.camera_opened:
             self.last_error = f"Camera index {CAMERA_INDEX} did not open"
@@ -693,8 +705,19 @@ class CameraStreamer:
             self.frame_count += 1
             self.last_frame_t = time.time()
 
-            # JPEG encode
-            ret2, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            stream_frame = frame
+            if STREAM_WIDTH > 0 and STREAM_HEIGHT > 0 and (frame.shape[1] != STREAM_WIDTH or frame.shape[0] != STREAM_HEIGHT):
+                stream_frame = cv2.resize(frame, (STREAM_WIDTH, STREAM_HEIGHT))
+
+            detect_frame = frame
+            if frame.shape[1] != DETECTION_RESIZE_WIDTH or frame.shape[0] != DETECTION_RESIZE_HEIGHT:
+                detect_frame = cv2.resize(frame, (DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT))
+
+            ret2, jpeg = cv2.imencode(
+                '.jpg',
+                stream_frame,
+                [cv2.IMWRITE_JPEG_QUALITY, STREAM_JPEG_QUALITY],
+            )
             if not ret2:
                 self.last_error = "JPEG encode failed"
                 logging.warning(self.last_error)
@@ -702,7 +725,7 @@ class CameraStreamer:
 
             with self._lock:
                 self.latest_frame      = jpeg.tobytes()
-                self.latest_raw_frame  = frame.copy()
+                self.latest_raw_frame  = detect_frame
         self.running = False
 
     def _detection_loop(self):
@@ -757,8 +780,13 @@ class CameraStreamer:
         return {
             "cv_available": CV_AVAILABLE,
             "camera_index": CAMERA_INDEX,
+            "camera_size": [CAMERA_WIDTH, CAMERA_HEIGHT],
+            "camera_fps": CAMERA_FPS,
             "camera_opened": self.camera_opened,
             "running": self.running,
+            "stream_size": [STREAM_WIDTH, STREAM_HEIGHT],
+            "stream_fps": STREAM_FPS,
+            "stream_jpeg_quality": STREAM_JPEG_QUALITY,
             "has_frame": has_frame,
             "frame_count": self.frame_count,
             "last_frame_age_s": round(time.time() - self.last_frame_t, 2) if self.last_frame_t else None,
@@ -769,6 +797,7 @@ class CameraStreamer:
             "hog_win_stride": HOG_WIN_STRIDE,
             "hog_padding": HOG_PADDING,
             "hog_scale": HOG_SCALE,
+            "detection_size": [DETECTION_RESIZE_WIDTH, DETECTION_RESIZE_HEIGHT],
             "detector_available": self.detector.available,
             "detector_last_error": self.detector.last_error,
             "detection_interval_s": DETECTION_INTERVAL_S,
@@ -797,7 +826,7 @@ class CameraStreamer:
                     )
                 except (ConnectionResetError, BrokenPipeError, OSError, asyncio.CancelledError):
                     break
-            await asyncio.sleep(1 / 15)
+            await asyncio.sleep(1 / max(1.0, STREAM_FPS))
 
         return response
 

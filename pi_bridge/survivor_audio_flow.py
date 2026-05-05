@@ -25,7 +25,8 @@ NO_WORDS = {"no", "nope", "negative", "nah"}
 HELP_WORDS = {"help", "save", "emergency", "danger"}
 PANIC_WORDS = {"panic", "scared", "afraid", "terrified", "please"}
 
-AUDIO_PLAYER = os.getenv("AUDIO_PLAYER", "auto").strip().lower()
+AUDIO_PLAYER = os.getenv("AUDIO_PLAYER", "mpg123").strip().lower()
+AUDIO_OUTPUT_BACKEND = os.getenv("AUDIO_OUTPUT_BACKEND", "").strip().lower()
 AUDIO_OUTPUT_DEVICE = os.getenv("AUDIO_OUTPUT_DEVICE", "").strip()
 
 
@@ -74,16 +75,19 @@ class SurvivorAudioFlow:
         aplay = _which("aplay")
 
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and mpg123:
-            cmd = [mpg123, "-q"]
+            cmd = [mpg123]
+            if AUDIO_OUTPUT_BACKEND:
+                cmd.extend(["-o", AUDIO_OUTPUT_BACKEND])
             if AUDIO_OUTPUT_DEVICE:
                 cmd.extend(["-a", AUDIO_OUTPUT_DEVICE])
+            cmd.append("-q")
             cmd.append(path)
             commands.append(cmd)
-            if AUDIO_OUTPUT_DEVICE:
+            if AUDIO_PLAYER == "auto" and (AUDIO_OUTPUT_BACKEND or AUDIO_OUTPUT_DEVICE):
                 commands.append([mpg123, "-q", path])
         if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and ffplay:
             commands.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "error", path])
-        if AUDIO_PLAYER in ("auto", "aplay") and aplay:
+        if not _is_mp3(path) and AUDIO_PLAYER in ("auto", "aplay") and aplay:
             cmd = [aplay]
             if AUDIO_OUTPUT_DEVICE:
                 cmd.extend(["-D", AUDIO_OUTPUT_DEVICE])
@@ -94,8 +98,9 @@ class SurvivorAudioFlow:
 
         if not commands:
             logging.warning(
-                "No audio player command available. AUDIO_PLAYER=%r PATH=%r mpg123=%r ffplay=%r aplay=%r",
+                "No audio player command available. AUDIO_PLAYER=%r AUDIO_OUTPUT_BACKEND=%r PATH=%r mpg123=%r ffplay=%r aplay=%r",
                 AUDIO_PLAYER,
+                AUDIO_OUTPUT_BACKEND,
                 os.getenv("PATH", ""),
                 mpg123,
                 ffplay,
