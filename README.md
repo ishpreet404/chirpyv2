@@ -16,7 +16,7 @@ ChirpyV2 is a sophisticated, full-stack disaster response robotics platform. It 
 *   **CV Victim Detection**: HOG-based person detection runs on the Raspberry Pi; automatically identifies survivors.
 *   **Autonomous Triage**: Upon detection, the rover initiates a timed speech sequence to identify itself and gather vital triage data (Injuries, Mobility).
 *   **Advanced AI (OpenRouter)**: Integrated with OpenRouter (GPT-4o/Gemini) to provide context-aware, calm, and bounded responses to survivors.
-*   **STT/TTS**: Offline Speech-to-Text via **Vosk** and Text-to-Speech via **espeak-ng** for high-reliability in field deployments.
+*   **Voice Interaction**: Offline Speech-to-Text via **Vosk** with prerecorded MP3 voice prompts for field deployments.
 *   **Conversation Log**: Full transcripts of robot-survivor interactions are streamed to the dashboard in real-time.
 
 ### 3. Precision Telemetry & Monitoring
@@ -43,7 +43,7 @@ ChirpyV2 is a sophisticated, full-stack disaster response robotics platform. It 
 | Component | Technology |
 | :--- | :--- |
 | **Firmware** | C++/Arduino (ESP32 DevKit V1), L298N, MPU6050, HC-SR04 |
-| **Bridge** | Python 3, OpenCV (HOG), Vosk (STT), espeak-ng (TTS), aiohttp |
+| **Bridge** | Python 3, OpenCV (HOG), Vosk (STT), MP3 playback, aiohttp |
 | **Backend** | Python, FastAPI, WebSockets, OpenRouter SDK |
 | **Frontend** | React, Leaflet (Maps), Chart.js, Styled Components |
 
@@ -57,7 +57,7 @@ chirpy_v2/
 │   └── chirpy_v2_fixed_again.ino
 ├── pi_bridge/             # Raspberry Pi Vision & Interaction layer
 │   ├── bridge.py          # Main Serial-to-Backend relay & CV logic
-│   ├── survivor_module.py # STT/TTS and Triage sequence logic
+│   ├── survivor_module.py # STT and prerecorded triage audio flow
 │   └── model/             # (Not provided) Download Vosk model here
 ├── backend/               # Mission control API & State management
 │   └── main.py            # FastAPI server with WebSocket relays
@@ -108,7 +108,7 @@ npm start
 ### 4. Start Pi Bridge
 ```bash
 cd pi_bridge
-# Ensure espeak-ng and portaudio19-dev are installed
+# Ensure portaudio19-dev is installed for the Bluetooth/input microphone path
 python3 bridge.py
 ```
 

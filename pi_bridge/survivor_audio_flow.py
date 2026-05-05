@@ -25,20 +25,6 @@ NO_WORDS = {"no", "nope", "negative", "nah"}
 HELP_WORDS = {"help", "save", "emergency", "danger"}
 PANIC_WORDS = {"panic", "scared", "afraid", "terrified", "please"}
 
-FALLBACK_UNCLEAR = (
-    "Sorry, I could not understand clearly. Please answer with yes or no if possible."
-)
-FALLBACK_NO_RESPONSE = (
-    "No response detected. I will keep your location marked and notify the rescue team."
-)
-FALLBACK_HELP = (
-    "Help has been notified. Please stay calm. I will remain nearby and continue sharing your location."
-)
-FALLBACK_PANIC = (
-    "Please try to stay calm. You are not alone. Rescue support is on the way."
-)
-
-
 def _safe_basename(path: str) -> str:
     return os.path.splitext(os.path.basename(path))[0]
 
@@ -90,13 +76,6 @@ class SurvivorAudioFlow:
         logging.warning("No suitable audio player found for %s", path)
         return False
 
-    def _speak_fallback(self, text: str):
-        espeak = shutil.which("espeak-ng") or shutil.which("espeak")
-        if espeak:
-            subprocess.run([espeak, "-s140", "-v", "en-us", text], check=False)
-        else:
-            logging.warning("No TTS engine found. Install espeak-ng for fallback speech.")
-
     def _listen_for_text(self) -> str:
         if not self.model or sd is None or KaldiRecognizer is None:
             return ""
@@ -137,18 +116,7 @@ class SurvivorAudioFlow:
         return "unclear"
 
     def _maybe_play_fallback(self, text: str, reason: str):
-        if reason == "no_response":
-            self._speak_fallback(FALLBACK_NO_RESPONSE)
-            return
-        if reason == "unclear":
-            self._speak_fallback(FALLBACK_UNCLEAR)
-            return
-
-        words = set(text.lower().split())
-        if words & HELP_WORDS:
-            self._speak_fallback(FALLBACK_HELP)
-        elif words & PANIC_WORDS:
-            self._speak_fallback(FALLBACK_PANIC)
+        logging.info("No prerecorded fallback for response reason=%s text=%r", reason, text)
 
     def _ordered_questions_after(self) -> list[str]:
         folder = os.path.join(self.audio_root, "Questions after")

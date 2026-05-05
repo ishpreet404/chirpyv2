@@ -7,7 +7,6 @@ import queue
 import logging
 import threading
 import asyncio
-import shutil
 import aiohttp
 
 # --- Configuration ---
@@ -21,25 +20,7 @@ except ImportError:
     KaldiRecognizer = None
     logging.warning("Missing vosk/sounddevice; speech features disabled")
 
-# Voice synthesis (very lightweight for Pi 4)
-# Option A: espeak-ng (robotic but fast)
-# Option B: gTTS (needs internet)
-# Option C: pyttsx3 (can use espeak/sapi5)
-import subprocess
-
 from survivor_audio_flow import SurvivorAudioFlow
-
-def speak(text):
-    print(f"TTS: {text}")
-    espeak = shutil.which("espeak-ng") or shutil.which("espeak")
-    if not espeak:
-        logging.warning("No TTS engine found. Install espeak-ng for spoken replies.")
-        return
-
-    try:
-        subprocess.run([espeak, "-s140", "-v", "en-us", text], check=False)
-    except Exception:
-        logging.exception("Speak error")
 
 # --- Constants ---
 MODEL_PATH = "model" # Place a small Vosk model here: https://alphacephei.com/vosk/models
@@ -93,7 +74,7 @@ class SurvivorModule:
                         data = await resp.json()
                         reply = data.get("llm_reply")
                         if reply:
-                            speak(reply)
+                            logging.info("Backend LLM reply logged; prerecorded audio flow does not synthesize speech: %s", reply)
         except Exception as e:
             print(f"Backend sync error: {e}")
 
