@@ -13,7 +13,7 @@ ChirpyV2 is a sophisticated, full-stack disaster response robotics platform. It 
 *   **Manual Overrides**: Low-latency keyboard and UI-based controls (F, B, L, R, S) for direct intervention.
 
 ### 2. Survivor Interaction Module (SIM)
-*   **CV Victim Detection**: YOLOv8 Nano person detection runs on the Raspberry Pi; automatically identifies survivors.
+*   **CV Victim Detection**: Basic OpenCV HOG person detection runs on the Raspberry Pi; automatically identifies survivors.
 *   **Autonomous Triage**: Upon detection, the rover initiates a timed speech sequence to identify itself and gather vital triage data (Injuries, Mobility).
 *   **Advanced AI (OpenRouter)**: Integrated with OpenRouter (GPT-4o/Gemini) to provide context-aware, calm, and bounded responses to survivors.
 *   **Voice Interaction**: Offline Speech-to-Text via **Vosk** with prerecorded MP3 voice prompts for field deployments.
@@ -43,7 +43,7 @@ ChirpyV2 is a sophisticated, full-stack disaster response robotics platform. It 
 | Component | Technology |
 | :--- | :--- |
 | **Firmware** | C++/Arduino (ESP32 DevKit V1), L298N, MPU6050, HC-SR04 |
-| **Bridge** | Python 3, OpenCV, YOLOv8 Nano, Vosk (STT), MP3 playback, aiohttp |
+| **Bridge** | Python 3, OpenCV, Vosk (STT), MP3 playback, aiohttp |
 | **Backend** | Python, FastAPI, WebSockets, OpenRouter SDK |
 | **Frontend** | React, Leaflet (Maps), Chart.js, Styled Components |
 
@@ -134,13 +134,8 @@ OLED_HEIGHT=64
 OLED_FPS=8
 OLED_RETRY_DELAY_S=1.0
 CAMERA_INDEX=0
-YOLO_MODEL_PATH=yolov8n.pt
-YOLO_CONFIDENCE_THRESHOLD=0.18
-YOLO_IOU_THRESHOLD=0.45
-YOLO_IMAGE_SIZE=416
-YOLO_DEVICE=cpu
-YOLO_MAX_DETECTIONS=10
-YOLO_PERSON_CLASS_ID=0
+HOG_HIT_THRESHOLD=0.0
+HOG_FINAL_THRESHOLD=2
 DETECTION_INTERVAL_S=1.0
 ```
 
