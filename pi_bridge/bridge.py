@@ -758,16 +758,17 @@ class RoverBridge:
         self.relay     = BackendRelay()
         self.tracker   = PathTracker()
         self.logger    = SessionLogger(LOG_DIR)
-        
+
         # Survivor Interaction Module
         self.survivor_active = False
+        self._survivor_lock = threading.Lock()
         try:
             from survivor_module import SurvivorModule
             self.survivor_module = SurvivorModule()
             threading.Thread(target=self.survivor_module.run, daemon=True).start()
-        except ImportError:
+        except Exception as exc:
             self.survivor_module = None
-            logging.warning("SurvivorModule not found, skipping speech features")
+            logging.warning("SurvivorModule unavailable, skipping speech features: %s", exc)
 
         self.latest_telemetry : dict | None = None
         self._lock = asyncio.Lock()
@@ -817,10 +818,31 @@ class RoverBridge:
             'detections': detections,
         })
 
-        # Start Survivor Interaction Sequence
-        if self.survivor_module:
-            # Run in a separate thread so we don't block the bridge
-            threading.Thread(target=self.survivor_module.ask_questions, daemon=True).start()
+        self._start_survivor_interaction()
+
+    def _start_survivor_interaction(self):
+        """Start voice triage after victim detection without blocking camera capture."""
+        if not self.survivor_module:
+            logging.info("Victim detected, but survivor voice module is unavailable")
+            return
+
+        with self._survivor_lock:
+            if self.survivor_active:
+                logging.info("Victim detected while survivor voice flow is already active")
+                return
+            self.survivor_active = True
+
+        def run_voice_flow():
+            try:
+                logging.info("Starting survivor voice flow after victim detection")
+                self.survivor_module.ask_questions()
+            except Exception:
+                logging.exception("Survivor voice flow failed")
+            finally:
+                with self._survivor_lock:
+                    self.survivor_active = False
+
+        threading.Thread(target=run_voice_flow, daemon=True).start()
 
     def send_command(self, cmd: str):
         self.serial.send_command(cmd)

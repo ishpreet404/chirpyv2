@@ -3,3 +3,5 @@ opencv-python-headless==4.9.0.80
 aiohttp==3.9.3
 numpy==1.26.4
 python-dotenv==1.0.1
+sounddevice==0.4.6
+vosk==0.3.45
