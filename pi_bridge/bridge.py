@@ -355,11 +355,11 @@ class PersonDetector:
 
         rects, weights = self.hog.detectMultiScale(
             frame,
-            hitThreshold=HOG_HIT_THRESHOLD,
-            winStride=HOG_WIN_STRIDE,
-            padding=HOG_PADDING,
-            scale=HOG_SCALE,
-            finalThreshold=HOG_FINAL_THRESHOLD,
+            HOG_HIT_THRESHOLD,
+            HOG_WIN_STRIDE,
+            HOG_PADDING,
+            HOG_SCALE,
+            HOG_FINAL_THRESHOLD,
         )
 
         self.last_error = None
