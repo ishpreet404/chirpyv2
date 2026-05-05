@@ -28,6 +28,10 @@ PANIC_WORDS = {"panic", "scared", "afraid", "terrified", "please"}
 AUDIO_PLAYER = os.getenv("AUDIO_PLAYER", "auto").strip().lower()
 AUDIO_OUTPUT_DEVICE = os.getenv("AUDIO_OUTPUT_DEVICE", "").strip()
 
+
+def _which(name: str) -> str | None:
+    return shutil.which(name) or (f"/usr/bin/{name}" if os.path.exists(f"/usr/bin/{name}") else None)
+
 def _safe_basename(path: str) -> str:
     return os.path.splitext(os.path.basename(path))[0]
 
@@ -65,20 +69,39 @@ class SurvivorAudioFlow:
             return False
 
         commands = []
-        if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and shutil.which("mpg123"):
-            cmd = ["mpg123", "-q"]
+        mpg123 = _which("mpg123")
+        ffplay = _which("ffplay")
+        aplay = _which("aplay")
+
+        if _is_mp3(path) and AUDIO_PLAYER in ("auto", "mpg123") and mpg123:
+            cmd = [mpg123, "-q"]
             if AUDIO_OUTPUT_DEVICE:
                 cmd.extend(["-a", AUDIO_OUTPUT_DEVICE])
             cmd.append(path)
             commands.append(cmd)
-        if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and shutil.which("ffplay"):
-            commands.append(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", path])
-        if AUDIO_PLAYER in ("auto", "aplay") and shutil.which("aplay"):
-            cmd = ["aplay"]
+            if AUDIO_OUTPUT_DEVICE:
+                commands.append([mpg123, "-q", path])
+        if _is_mp3(path) and AUDIO_PLAYER in ("auto", "ffplay") and ffplay:
+            commands.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "error", path])
+        if AUDIO_PLAYER in ("auto", "aplay") and aplay:
+            cmd = [aplay]
             if AUDIO_OUTPUT_DEVICE:
                 cmd.extend(["-D", AUDIO_OUTPUT_DEVICE])
             cmd.append(path)
             commands.append(cmd)
+            if AUDIO_OUTPUT_DEVICE:
+                commands.append([aplay, path])
+
+        if not commands:
+            logging.warning(
+                "No audio player command available. AUDIO_PLAYER=%r PATH=%r mpg123=%r ffplay=%r aplay=%r",
+                AUDIO_PLAYER,
+                os.getenv("PATH", ""),
+                mpg123,
+                ffplay,
+                aplay,
+            )
+            return False
 
         for cmd in commands:
             logging.info("Playing audio: %s", " ".join(cmd))
