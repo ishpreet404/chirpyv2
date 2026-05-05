@@ -50,9 +50,38 @@ const ZONE_RADIUS_M = 0.5;
 
 const OSINT_FIELD_TYPES = {
 	contact: ["email", "mail", "phone", "mobile", "tel"],
-	identity: ["name", "firstname", "lastname", "fullname", "username", "dob", "birthday", "birthdate", "age"],
-	location: ["address", "city", "state", "region", "country", "postcode", "zip", "street"],
-	sensitive: ["password", "credit", "card", "cvv", "ssn", "passport", "doc", "pin", "ip"],
+	identity: [
+		"name",
+		"firstname",
+		"lastname",
+		"fullname",
+		"username",
+		"dob",
+		"birthday",
+		"birthdate",
+		"age",
+	],
+	location: [
+		"address",
+		"city",
+		"state",
+		"region",
+		"country",
+		"postcode",
+		"zip",
+		"street",
+	],
+	sensitive: [
+		"password",
+		"credit",
+		"card",
+		"cvv",
+		"ssn",
+		"passport",
+		"doc",
+		"pin",
+		"ip",
+	],
 	default: [],
 };
 
@@ -147,7 +176,8 @@ const styles = {
 		gridTemplateRows: "auto",
 	},
 	panel: {
-		background: "linear-gradient(180deg, rgba(22,27,34,0.96), rgba(17,20,24,0.98))",
+		background:
+			"linear-gradient(180deg, rgba(22,27,34,0.96), rgba(17,20,24,0.98))",
 		border: `1px solid rgba(255,255,255,0.06)`,
 		borderRadius: 20,
 		boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
@@ -168,7 +198,8 @@ const styles = {
 		fontWeight: 700,
 		textTransform: "uppercase",
 		flexShrink: 0,
-		background: "linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0))",
+		background:
+			"linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0))",
 	},
 	panelBody: {
 		flex: 1,
@@ -183,7 +214,12 @@ const styles = {
 		padding: "7px 0",
 		borderBottom: `1px solid rgba(255,255,255,0.05)`,
 	},
-	telLabel: { color: C.dimText, fontSize: 11, letterSpacing: 0.7, textTransform: "uppercase" },
+	telLabel: {
+		color: C.dimText,
+		fontSize: 11,
+		letterSpacing: 0.7,
+		textTransform: "uppercase",
+	},
 	telVal: { fontWeight: 700, fontSize: 13, fontVariantNumeric: "tabular-nums" },
 };
 
@@ -265,14 +301,36 @@ function AlertBadge({ level }) {
 function SectionLabel({ eyebrow, title, subtitle }) {
 	return (
 		<div style={{ marginBottom: 14 }}>
-			<div style={{ color: C.accent, letterSpacing: 2.2, fontSize: 10, textTransform: "uppercase", marginBottom: 8 }}>
+			<div
+				style={{
+					color: C.accent,
+					letterSpacing: 2.2,
+					fontSize: 10,
+					textTransform: "uppercase",
+					marginBottom: 8,
+				}}
+			>
 				{eyebrow}
 			</div>
-			<div style={{ fontSize: 26, fontWeight: 800, color: C.heading, lineHeight: 1.08 }}>
+			<div
+				style={{
+					fontSize: 26,
+					fontWeight: 800,
+					color: C.heading,
+					lineHeight: 1.08,
+				}}
+			>
 				{title}
 			</div>
 			{subtitle && (
-				<div style={{ marginTop: 8, color: C.dimText, fontSize: 13, lineHeight: 1.7 }}>
+				<div
+					style={{
+						marginTop: 8,
+						color: C.dimText,
+						fontSize: 13,
+						lineHeight: 1.7,
+					}}
+				>
 					{subtitle}
 				</div>
 			)}
@@ -333,8 +391,10 @@ function odomToLatLng(xCm, yCm, origin) {
 	const yMeters = parseNumber(yCm, 0) / 100;
 	const headingRad = (headingDeg * Math.PI) / 180;
 
-	const eastMeters = xMeters * Math.sin(headingRad) - yMeters * Math.cos(headingRad);
-	const northMeters = xMeters * Math.cos(headingRad) + yMeters * Math.sin(headingRad);
+	const eastMeters =
+		xMeters * Math.sin(headingRad) - yMeters * Math.cos(headingRad);
+	const northMeters =
+		xMeters * Math.cos(headingRad) + yMeters * Math.sin(headingRad);
 	const lat = lat0 + northMeters / 111111;
 	const lngScale = Math.max(0.000001, Math.cos((lat0 * Math.PI) / 180));
 	const lng = lng0 + eastMeters / (111111 * lngScale);
@@ -360,9 +420,10 @@ function MapAutoResize() {
 		const rafId = requestAnimationFrame(handleResize);
 		const timeoutId = window.setTimeout(handleResize, 250);
 		const container = map.getContainer();
-		const observer = typeof ResizeObserver !== "undefined"
-			? new ResizeObserver(handleResize)
-			: null;
+		const observer =
+			typeof ResizeObserver !== "undefined"
+				? new ResizeObserver(handleResize)
+				: null;
 
 		observer?.observe(container);
 		window.addEventListener("resize", handleResize);
@@ -399,7 +460,9 @@ function SatelliteMapPanel({
 	onWaypointAdd,
 }) {
 	const mapData = useMemo(() => {
-		const rawSegments = Array.isArray(pathData?.segments) ? pathData.segments : [];
+		const rawSegments = Array.isArray(pathData?.segments)
+			? pathData.segments
+			: [];
 		const pathLines = rawSegments
 			.map((segment) => {
 				const points = Array.isArray(segment) ? segment : [];
@@ -419,15 +482,25 @@ function SatelliteMapPanel({
 			.filter(Boolean);
 
 		const victims = Array.isArray(pathData?.victims) ? pathData.victims : [];
-		const route = pathData?.route && typeof pathData.route === "object" ? pathData.route : {};
-		const routeWaypoints = Array.isArray(route.waypoints) ? route.waypoints : [];
-		const highRiskZones = Array.isArray(pathData?.zones?.high_risk) ? pathData.zones.high_risk : [];
+		const route =
+			pathData?.route && typeof pathData.route === "object"
+				? pathData.route
+				: {};
+		const routeWaypoints = Array.isArray(route.waypoints)
+			? route.waypoints
+			: [];
+		const highRiskZones = Array.isArray(pathData?.zones?.high_risk)
+			? pathData.zones.high_risk
+			: [];
 		const zoneSizeCm = Number(pathData?.zones?.size_cm) || ZONE_RADIUS_M * 200;
 		const roverX = telemetry?.abs_x ?? telemetry?.x;
 		const roverY = telemetry?.abs_y ?? telemetry?.y;
 		const roverPoint =
-			roverX != null && roverY != null ? odomToLatLng(roverX, roverY, origin) : null;
-		const roverHeading = parseNumber(origin?.heading, 0) + parseNumber(telemetry?.heading, 0);
+			roverX != null && roverY != null
+				? odomToLatLng(roverX, roverY, origin)
+				: null;
+		const roverHeading =
+			parseNumber(origin?.heading, 0) + parseNumber(telemetry?.heading, 0);
 
 		const pointsForBounds = [];
 		pathLines.forEach((line) => pointsForBounds.push(...line));
@@ -465,19 +538,28 @@ function SatelliteMapPanel({
 	}, [origin, pathData, telemetry, telemetryHistory]);
 
 	const originPosition = originToPosition(origin);
-	const fallbackCenter = mapData.roverPoint || lastItem(mapData.livePath) || lastItem(lastItem(mapData.pathLines)) || originToPosition(origin);
+	const fallbackCenter =
+		mapData.roverPoint ||
+		lastItem(mapData.livePath) ||
+		lastItem(lastItem(mapData.pathLines)) ||
+		originToPosition(origin);
 	const allowFitBounds = !mapData.roverPoint;
 	const originLat = parseNumber(origin?.lat, NaN);
 	const originLng = parseNumber(origin?.lng, NaN);
-	const originHasCoords = Number.isFinite(originLat) && Number.isFinite(originLng);
+	const originHasCoords =
+		Number.isFinite(originLat) && Number.isFinite(originLng);
 	const originIsZero = originHasCoords && originLat === 0 && originLng === 0;
-	const originMarkerPosition = (!originHasCoords || originIsZero) ? mapData.roverPoint : originPosition;
+	const originMarkerPosition =
+		!originHasCoords || originIsZero ? mapData.roverPoint : originPosition;
 
 	const updateOrigin = (field, value) => {
 		const next = { ...origin, [field]: value };
 		setOrigin(next);
 		if (typeof window !== "undefined") {
-			window.localStorage.setItem(LOCAL_STORAGE_MAP_ORIGIN_KEY, JSON.stringify(next));
+			window.localStorage.setItem(
+				LOCAL_STORAGE_MAP_ORIGIN_KEY,
+				JSON.stringify(next),
+			);
 		}
 	};
 
@@ -486,10 +568,19 @@ function SatelliteMapPanel({
 			<div style={styles.panelHeader}>
 				SATELLITE MAP
 				<span style={{ float: "right", color: C.dimText, fontWeight: 400 }}>
-					{mapData.pathLines.length} segments · {mapData.routeWaypoints.length} waypoints · {mapData.highRiskZones.length} high-risk zones
+					{mapData.pathLines.length} segments · {mapData.routeWaypoints.length}{" "}
+					waypoints · {mapData.highRiskZones.length} high-risk zones
 				</span>
 			</div>
-			<div style={{ ...styles.panelBody, padding: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+			<div
+				style={{
+					...styles.panelBody,
+					padding: 0,
+					display: "flex",
+					flexDirection: "column",
+					overflow: "hidden",
+				}}
+			>
 				<div
 					style={{
 						display: "grid",
@@ -501,7 +592,9 @@ function SatelliteMapPanel({
 						alignItems: "end",
 					}}
 				>
-					<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+					<label
+						style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}
+					>
 						Rover Latitude
 						<input
 							type="number"
@@ -512,7 +605,9 @@ function SatelliteMapPanel({
 							style={mapInputStyle}
 						/>
 					</label>
-					<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+					<label
+						style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}
+					>
 						Rover Longitude
 						<input
 							type="number"
@@ -523,7 +618,9 @@ function SatelliteMapPanel({
 							style={mapInputStyle}
 						/>
 					</label>
-					<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+					<label
+						style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}
+					>
 						Rover Heading
 						<input
 							type="number"
@@ -561,7 +658,14 @@ function SatelliteMapPanel({
 					</button>
 				</div>
 
-				<div style={{ flex: 1, minHeight: 320, position: "relative", overflow: "hidden" }}>
+				<div
+					style={{
+						flex: 1,
+						minHeight: 320,
+						position: "relative",
+						overflow: "hidden",
+					}}
+				>
 					{origin.lat !== "" && origin.lng !== "" ? (
 						<MapContainer
 							center={fallbackCenter}
@@ -576,32 +680,54 @@ function SatelliteMapPanel({
 							<MapAutoResize />
 							<TileLayer
 								url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-								attribution='Tiles &copy; Esri'
+								attribution="Tiles &copy; Esri"
 							/>
 							{originMarkerPosition && (
 								<CircleMarker
 									center={originMarkerPosition}
 									radius={6}
-									pathOptions={{ color: C.green, fillColor: C.green, fillOpacity: 0.7, weight: 2 }}
+									pathOptions={{
+										color: C.green,
+										fillColor: C.green,
+										fillOpacity: 0.7,
+										weight: 2,
+									}}
 								>
 									<Popup>Rover</Popup>
 								</CircleMarker>
 							)}
-							{mapData.bounds && <MapBounds bounds={mapData.bounds} enabled={allowFitBounds} />}
+							{mapData.bounds && (
+								<MapBounds bounds={mapData.bounds} enabled={allowFitBounds} />
+							)}
 							<MapInteractionLayer
 								mode={plannerMode}
 								onWaypointAdd={onWaypointAdd}
 							/>
 							{mapData.pathLines.map((line, index) => (
-								<Polyline key={`path-${index}`} positions={line} pathOptions={{ color: C.accent, weight: 4, opacity: 0.65 }} />
+								<Polyline
+									key={`path-${index}`}
+									positions={line}
+									pathOptions={{ color: C.accent, weight: 4, opacity: 0.65 }}
+								/>
 							))}
 							{mapData.livePath.length > 1 && (
-								<Polyline positions={mapData.livePath} pathOptions={{ color: C.red, weight: 3, opacity: 0.9 }} />
+								<Polyline
+									positions={mapData.livePath}
+									pathOptions={{ color: C.red, weight: 3, opacity: 0.9 }}
+								/>
 							)}
 							{mapData.routeWaypoints.length > 0 && (
 								<Polyline
-									positions={mapData.routeWaypoints.map((waypoint) => [Number(waypoint.lat), Number(waypoint.lng)])}
-									pathOptions={{ color: C.blue, weight: 3, dashArray: "8 6", opacity: 0.9 }}
+									positions={mapData.routeWaypoints.map((waypoint) => [
+										Number(waypoint.lat),
+										Number(waypoint.lng),
+									])}
+									pathOptions={{
+										color: C.blue,
+										weight: 3,
+										dashArray: "8 6",
+										opacity: 0.9,
+									}}
 								/>
 							)}
 							{mapData.routeWaypoints.map((waypoint, index) => {
@@ -613,12 +739,22 @@ function SatelliteMapPanel({
 										<Circle
 											center={position}
 											radius={ZONE_RADIUS_M}
-											pathOptions={{ color: C.blue, fillColor: C.blue, fillOpacity: 0.15, weight: 1 }}
+											pathOptions={{
+												color: C.blue,
+												fillColor: C.blue,
+												fillOpacity: 0.15,
+												weight: 1,
+											}}
 										/>
 										<CircleMarker
 											center={position}
 											radius={isActive ? 8 : 6}
-											pathOptions={{ color: isActive ? C.green : C.blue, fillColor: isActive ? C.green : C.blue, fillOpacity: 0.9, weight: 2 }}
+											pathOptions={{
+												color: isActive ? C.green : C.blue,
+												fillColor: isActive ? C.green : C.blue,
+												fillOpacity: 0.9,
+												weight: 2,
+											}}
 										>
 											<Popup>Waypoint #{index + 1}</Popup>
 										</CircleMarker>
@@ -636,7 +772,12 @@ function SatelliteMapPanel({
 										key={`high-risk-${index}`}
 										center={center}
 										radius={zoneRadiusM}
-										pathOptions={{ color: C.yellow, fillColor: C.yellow, fillOpacity: 0.18, weight: 1 }}
+										pathOptions={{
+											color: C.yellow,
+											fillColor: C.yellow,
+											fillOpacity: 0.18,
+											weight: 1,
+										}}
 									/>
 								);
 							})}
@@ -649,9 +790,23 @@ function SatelliteMapPanel({
 										<Circle
 											center={position}
 											radius={ZONE_RADIUS_M}
-											pathOptions={{ color: C.yellow, fillColor: C.yellow, fillOpacity: 0.15, weight: 1 }}
+											pathOptions={{
+												color: C.yellow,
+												fillColor: C.yellow,
+												fillOpacity: 0.15,
+												weight: 1,
+											}}
 										/>
-										<CircleMarker center={position} radius={7} pathOptions={{ color: C.yellow, fillColor: C.yellow, fillOpacity: 0.35, weight: 2 }}>
+										<CircleMarker
+											center={position}
+											radius={7}
+											pathOptions={{
+												color: C.yellow,
+												fillColor: C.yellow,
+												fillOpacity: 0.35,
+												weight: 2,
+											}}
+										>
 											<Popup>Victim #{label}</Popup>
 										</CircleMarker>
 									</React.Fragment>
@@ -659,17 +814,34 @@ function SatelliteMapPanel({
 							})}
 							{mapData.roverPoint && (
 								<>
-									<CircleMarker center={mapData.roverPoint} radius={7} pathOptions={{ color: C.green, fillColor: C.green, fillOpacity: 1, weight: 2 }}>
+									<CircleMarker
+										center={mapData.roverPoint}
+										radius={7}
+										pathOptions={{
+											color: C.green,
+											fillColor: C.green,
+											fillOpacity: 1,
+											weight: 2,
+										}}
+									>
 										<Popup>Rover</Popup>
 									</CircleMarker>
 									<Polyline
 										positions={[
 											mapData.roverPoint,
 											odomToLatLng(
-												(parseNumber(telemetry?.abs_x ?? telemetry?.x, 0) +
-													Math.cos((parseNumber(telemetry?.heading, 0) * Math.PI) / 180) * 50),
-												(parseNumber(telemetry?.abs_y ?? telemetry?.y, 0) +
-													Math.sin((parseNumber(telemetry?.heading, 0) * Math.PI) / 180) * 50),
+												parseNumber(telemetry?.abs_x ?? telemetry?.x, 0) +
+													Math.cos(
+														(parseNumber(telemetry?.heading, 0) * Math.PI) /
+															180,
+													) *
+														50,
+												parseNumber(telemetry?.abs_y ?? telemetry?.y, 0) +
+													Math.sin(
+														(parseNumber(telemetry?.heading, 0) * Math.PI) /
+															180,
+													) *
+														50,
 												origin,
 											),
 										]}
@@ -691,7 +863,8 @@ function SatelliteMapPanel({
 								padding: 20,
 							}}
 						>
-							Enter the rover start latitude and longitude to view the satellite map.
+							Enter the rover start latitude and longitude to view the satellite
+							map.
 						</div>
 					)}
 				</div>
@@ -807,7 +980,6 @@ function PathCanvas({ pathData, telemetry }) {
 		ctx.lineTo(ox, oy + 10);
 		ctx.stroke();
 
-
 		// Path segments
 		segments.forEach((seg, si) => {
 			if (seg.length < 2) return;
@@ -872,7 +1044,6 @@ function PathCanvas({ pathData, telemetry }) {
 				ry - arrowLen * Math.sin(headingRad),
 			);
 			ctx.stroke();
-
 		}
 
 		// Legend
@@ -1176,14 +1347,14 @@ function TelemetryChart({ history }) {
 
 function AlertsPanel({ alerts }) {
 	return (
-		<div style={{ ...styles.panel, height: "auto", minHeight: 260, maxHeight: "100%" }}>
+		<div style={{ ...styles.panel, flex: 1, minHeight: 0 }}>
 			<div style={styles.panelHeader}>
 				ALERTS
 				<span style={{ float: "right", color: C.red }}>
 					{alerts.filter((a) => a.level === "critical").length} CRIT
 				</span>
 			</div>
-			<div style={{ ...styles.panelBody, padding: "8px", overflowY: "auto", maxHeight: "100%" }}>
+			<div style={{ ...styles.panelBody, padding: "8px", overflowY: "auto" }}>
 				{alerts.length === 0 && (
 					<div
 						style={{
@@ -1281,7 +1452,14 @@ function CameraPanel({ src, large = false, title = "CAMERA" }) {
 						<img
 							src={src}
 							alt=""
-							style={{ gridArea: "1 / 1", width: "100%", height: "100%", objectFit: "cover", display: "block", filter: "contrast(1.05) saturate(1.04)" }}
+							style={{
+								gridArea: "1 / 1",
+								width: "100%",
+								height: "100%",
+								objectFit: "cover",
+								display: "block",
+								filter: "contrast(1.05) saturate(1.04)",
+							}}
 							onLoad={() => setIsReady(true)}
 							onError={() => {
 								setIsReady(false);
@@ -1352,9 +1530,11 @@ function SurvivorPage({ onNavigate, status, httpBase }) {
 	useEffect(() => {
 		const fetchInteractions = () => {
 			fetch(`${httpBase}/api/survivors`)
-				.then(r => r.json())
-				.then(d => { if (d.ok) setInteractions(d.survivors); })
-				.catch(e => console.error("Fetch survivors error", e));
+				.then((r) => r.json())
+				.then((d) => {
+					if (d.ok) setInteractions(d.survivors);
+				})
+				.catch((e) => console.error("Fetch survivors error", e));
 		};
 		fetchInteractions();
 		const id = setInterval(fetchInteractions, 3000);
@@ -1364,38 +1544,103 @@ function SurvivorPage({ onNavigate, status, httpBase }) {
 	return (
 		<div style={{ ...styles.app, overflow: "auto" }}>
 			<div style={styles.topBar}>
-				<div style={styles.logo}><span style={{ fontSize: 22 }}>⬡</span>SURVIVOR INTERACTION</div>
-				<div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+				<div style={styles.logo}>
+					<span style={{ fontSize: 22 }}>⬡</span>SURVIVOR INTERACTION
+				</div>
+				<div
+					style={{
+						marginLeft: "auto",
+						display: "flex",
+						gap: 8,
+						flexWrap: "wrap",
+					}}
+				>
 					<PageButton onClick={() => onNavigate("landing")}>Home</PageButton>
-					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
+					<PageButton onClick={() => onNavigate("dashboard")}>
+						Dashboard
+					</PageButton>
 					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
-					<PageButton active onClick={() => onNavigate("survivor")}>Survivor</PageButton>
+					<PageButton active onClick={() => onNavigate("survivor")}>
+						Survivor
+					</PageButton>
 				</div>
 			</div>
 			<div style={{ padding: 22, display: "grid", gap: 16 }}>
-				<div style={{ display: "grid", gridTemplateColumns: "0.4fr 0.6fr", gap: 14 }}>
+				<div
+					style={{
+						display: "grid",
+						gridTemplateColumns: "0.4fr 0.6fr",
+						gap: 14,
+					}}
+				>
 					<div style={{ ...styles.panel, borderRadius: 24 }}>
 						<div style={styles.panelHeader}>TRIAGE STATUS</div>
 						<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
-							<div style={{ color: C.dimText, fontSize: 12, marginBottom: 10 }}>Latest detected survivor data</div>
-							<TelRow label="Can Move" value={interactions[0]?.responses?.can_move === false ? "NO" : "YES"} color={interactions[0]?.responses?.can_move === false ? C.red : C.green} />
+							<div style={{ color: C.dimText, fontSize: 12, marginBottom: 10 }}>
+								Latest detected survivor data
+							</div>
+							<TelRow
+								label="Can Move"
+								value={
+									interactions[0]?.responses?.can_move === false ? "NO" : "YES"
+								}
+								color={
+									interactions[0]?.responses?.can_move === false
+										? C.red
+										: C.green
+								}
+							/>
 							<TelRow label="Conscious" value="YES" color={C.green} />
-							<TelRow label="Last contact" value={interactions[0]?.timestamp ? new Date(interactions[0].timestamp).toLocaleTimeString() : "N/A"} />
+							<TelRow
+								label="Last contact"
+								value={
+									interactions[0]?.timestamp
+										? new Date(interactions[0].timestamp).toLocaleTimeString()
+										: "N/A"
+								}
+							/>
 							<div style={{ marginTop: 20, display: "grid", gap: 10 }}>
-								<button 
-									onClick={() => fetch(`${httpBase}/api/survivors/interaction`, { method: "POST", body: JSON.stringify({ transcript: "Who are you?", responses: {} }), headers: {"Content-Type": "application/json"} })}
+								<button
+									onClick={() =>
+										fetch(`${httpBase}/api/survivors/interaction`, {
+											method: "POST",
+											body: JSON.stringify({
+												transcript: "Who are you?",
+												responses: {},
+											}),
+											headers: { "Content-Type": "application/json" },
+										})
+									}
 									style={{ ...heroPrimaryButton, width: "100%" }}
 								>
 									COMMAND: INTRODUCE SELF
 								</button>
-								<button 
-									onClick={() => fetch(`${httpBase}/api/survivors/interaction`, { method: "POST", body: JSON.stringify({ transcript: "Are you injured?", responses: {} }), headers: {"Content-Type": "application/json"} })}
+								<button
+									onClick={() =>
+										fetch(`${httpBase}/api/survivors/interaction`, {
+											method: "POST",
+											body: JSON.stringify({
+												transcript: "Are you injured?",
+												responses: {},
+											}),
+											headers: { "Content-Type": "application/json" },
+										})
+									}
 									style={{ ...heroSecondaryButton, width: "100%" }}
 								>
 									TRIAGE: INJURY CHECK
 								</button>
-								<button 
-									onClick={() => fetch(`${httpBase}/api/survivors/interaction`, { method: "POST", body: JSON.stringify({ transcript: "Can you move?", responses: {} }), headers: {"Content-Type": "application/json"} })}
+								<button
+									onClick={() =>
+										fetch(`${httpBase}/api/survivors/interaction`, {
+											method: "POST",
+											body: JSON.stringify({
+												transcript: "Can you move?",
+												responses: {},
+											}),
+											headers: { "Content-Type": "application/json" },
+										})
+									}
 									style={{ ...heroSecondaryButton, width: "100%" }}
 								>
 									TRIAGE: MOBILITY CHECK
@@ -1405,26 +1650,80 @@ function SurvivorPage({ onNavigate, status, httpBase }) {
 					</div>
 					<div style={{ ...styles.panel, borderRadius: 24 }}>
 						<div style={styles.panelHeader}>CONVERSATION LOG</div>
-						<div style={{ ...styles.panelBody, padding: 0, maxHeight: 600, overflowY: "auto" }}>
-							{interactions.map(item => (
-								<div key={item.id} style={{ padding: 16, borderBottom: `1px solid ${C.border}` }}>
-									<div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-										<span style={{ fontSize: 10, color: C.accent, fontWeight: 700 }}>SURVIVOR ID: {item.id}</span>
-										<span style={{ fontSize: 10, color: C.dimText }}>{new Date(item.timestamp).toLocaleString()}</span>
-									</div>
-									<div style={{ background: C.surface, padding: 12, borderRadius: 12, marginBottom: 8 }}>
-										<div style={{ fontSize: 10, color: C.dimText, marginBottom: 4 }}>TRANSCRIPT</div>
-										<div style={{ fontSize: 14, color: C.text }}>"{item.transcript}"</div>
-									</div>
-									{item.responses && (
-										<div style={{ display: "flex", gap: 6 }}>
-											{Object.entries(item.responses).map(([k, v]) => (
-												<Pill key={k} color={v === false ? C.red : C.green} bg={v === false ? "#2a1010" : "#102a10"}>{k}: {String(v)}</Pill>
-											))}
+						<div
+							style={{
+								...styles.panelBody,
+								padding: 0,
+								maxHeight: 600,
+								overflowY: "auto",
+							}}
+						>
+							{interactions
+								.map((item) => (
+									<div
+										key={item.id}
+										style={{
+											padding: 16,
+											borderBottom: `1px solid ${C.border}`,
+										}}
+									>
+										<div
+											style={{
+												display: "flex",
+												justifyContent: "space-between",
+												marginBottom: 8,
+											}}
+										>
+											<span
+												style={{
+													fontSize: 10,
+													color: C.accent,
+													fontWeight: 700,
+												}}
+											>
+												SURVIVOR ID: {item.id}
+											</span>
+											<span style={{ fontSize: 10, color: C.dimText }}>
+												{new Date(item.timestamp).toLocaleString()}
+											</span>
 										</div>
-									)}
-								</div>
-							)).reverse()}
+										<div
+											style={{
+												background: C.surface,
+												padding: 12,
+												borderRadius: 12,
+												marginBottom: 8,
+											}}
+										>
+											<div
+												style={{
+													fontSize: 10,
+													color: C.dimText,
+													marginBottom: 4,
+												}}
+											>
+												TRANSCRIPT
+											</div>
+											<div style={{ fontSize: 14, color: C.text }}>
+												"{item.transcript}"
+											</div>
+										</div>
+										{item.responses && (
+											<div style={{ display: "flex", gap: 6 }}>
+												{Object.entries(item.responses).map(([k, v]) => (
+													<Pill
+														key={k}
+														color={v === false ? C.red : C.green}
+														bg={v === false ? "#2a1010" : "#102a10"}
+													>
+														{k}: {String(v)}
+													</Pill>
+												))}
+											</div>
+										)}
+									</div>
+								))
+								.reverse()}
 						</div>
 					</div>
 				</div>
@@ -1435,9 +1734,33 @@ function SurvivorPage({ onNavigate, status, httpBase }) {
 
 function HeroStat({ label, value, tone = C.text }) {
 	return (
-		<div style={{ background: "linear-gradient(180deg, rgba(22,27,34,0.96), rgba(16,19,24,0.98))", border: `1px solid rgba(255,255,255,0.06)`, borderRadius: 18, padding: 18, minHeight: 104, boxShadow: "0 16px 40px rgba(0,0,0,0.18)" }}>
-			<div style={{ fontSize: 10, color: C.dimText, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
-			<div style={{ color: tone, fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}>{value}</div>
+		<div
+			style={{
+				background:
+					"linear-gradient(180deg, rgba(22,27,34,0.96), rgba(16,19,24,0.98))",
+				border: `1px solid rgba(255,255,255,0.06)`,
+				borderRadius: 18,
+				padding: 18,
+				minHeight: 104,
+				boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+			}}
+		>
+			<div
+				style={{
+					fontSize: 10,
+					color: C.dimText,
+					letterSpacing: 1.6,
+					textTransform: "uppercase",
+					marginBottom: 6,
+				}}
+			>
+				{label}
+			</div>
+			<div
+				style={{ color: tone, fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}
+			>
+				{value}
+			</div>
 		</div>
 	);
 }
@@ -1487,26 +1810,55 @@ function OsintFinderPage({ onNavigate }) {
 				<div style={styles.logo}>
 					<span style={{ fontSize: 22 }}>⬡</span>
 					OSINT FINDER
-					<span style={{ color: C.dimText, fontWeight: 400, fontSize: 12 }}>VICTIM DATA COLLECTION</span>
+					<span style={{ color: C.dimText, fontWeight: 400, fontSize: 12 }}>
+						VICTIM DATA COLLECTION
+					</span>
 				</div>
-				<div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+				<div
+					style={{
+						marginLeft: "auto",
+						display: "flex",
+						gap: 8,
+						flexWrap: "wrap",
+					}}
+				>
 					<PageButton onClick={() => onNavigate("landing")}>Home</PageButton>
-					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
+					<PageButton onClick={() => onNavigate("dashboard")}>
+						Dashboard
+					</PageButton>
 					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
 					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
-					<PageButton active onClick={() => onNavigate("osint")}>OSINT</PageButton>
+					<PageButton active onClick={() => onNavigate("osint")}>
+						OSINT
+					</PageButton>
 				</div>
 			</div>
 
-			<div style={{ padding: 20, display: "grid", gap: 16, maxWidth: 1400, margin: "0 auto", width: "100%" }}>
+			<div
+				style={{
+					padding: 20,
+					display: "grid",
+					gap: 16,
+					maxWidth: 1400,
+					margin: "0 auto",
+					width: "100%",
+				}}
+			>
 				<div style={{ ...styles.panel }}>
 					<div style={styles.panelHeader}>VICTIM DATA COLLECTION</div>
 					<div style={{ ...styles.panelBody, display: "grid", gap: 12 }}>
 						<div style={{ color: C.dimText, fontSize: 12, lineHeight: 1.6 }}>
-							Use a single data point (email, phone, or name) to retrieve linked victim records.
-							Results are returned by the OSINT database and grouped by source.
+							Use a single data point (email, phone, or name) to retrieve linked
+							victim records. Results are returned by the OSINT database and
+							grouped by source.
 						</div>
-						<div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
+						<div
+							style={{
+								display: "grid",
+								gridTemplateColumns: "1fr auto",
+								gap: 10,
+							}}
+						>
 							<input
 								type="text"
 								value={query}
@@ -1548,7 +1900,8 @@ function OsintFinderPage({ onNavigate }) {
 					<div style={{ ...styles.panel }}>
 						<div style={styles.panelHeader}>SEARCH IN PROGRESS</div>
 						<div style={{ ...styles.panelBody, color: C.dimText }}>
-							Querying OSINT sources for: <strong style={{ color: C.text }}>{query}</strong>
+							Querying OSINT sources for:{" "}
+							<strong style={{ color: C.text }}>{query}</strong>
 						</div>
 					</div>
 				)}
@@ -1564,22 +1917,93 @@ function OsintFinderPage({ onNavigate }) {
 					<div style={{ display: "grid", gap: 12 }}>
 						<div style={{ ...styles.panel }}>
 							<div style={styles.panelHeader}>RESULT SUMMARY</div>
-							<div style={{ ...styles.panelBody, display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
-									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>DATABASES</div>
-									<div style={{ fontSize: 22, fontWeight: 800 }}>{results.NumOfDatabase ?? 0}</div>
+							<div
+								style={{
+									...styles.panelBody,
+									display: "grid",
+									gap: 8,
+									gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+								}}
+							>
+								<div
+									style={{
+										padding: 12,
+										border: `1px solid ${C.border}`,
+										borderRadius: 12,
+									}}
+								>
+									<div
+										style={{
+											color: C.dimText,
+											fontSize: 10,
+											letterSpacing: 1.2,
+										}}
+									>
+										DATABASES
+									</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>
+										{results.NumOfDatabase ?? 0}
+									</div>
 								</div>
-								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
-									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>RECORDS</div>
-									<div style={{ fontSize: 22, fontWeight: 800 }}>{results.NumOfResults ?? 0}</div>
+								<div
+									style={{
+										padding: 12,
+										border: `1px solid ${C.border}`,
+										borderRadius: 12,
+									}}
+								>
+									<div
+										style={{
+											color: C.dimText,
+											fontSize: 10,
+											letterSpacing: 1.2,
+										}}
+									>
+										RECORDS
+									</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>
+										{results.NumOfResults ?? 0}
+									</div>
 								</div>
-								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
-									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>SEARCH TIME</div>
-									<div style={{ fontSize: 22, fontWeight: 800 }}>{results["search time"]?.toFixed?.(3) ?? "0.000"}s</div>
+								<div
+									style={{
+										padding: 12,
+										border: `1px solid ${C.border}`,
+										borderRadius: 12,
+									}}
+								>
+									<div
+										style={{
+											color: C.dimText,
+											fontSize: 10,
+											letterSpacing: 1.2,
+										}}
+									>
+										SEARCH TIME
+									</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>
+										{results["search time"]?.toFixed?.(3) ?? "0.000"}s
+									</div>
 								</div>
-								<div style={{ padding: 12, border: `1px solid ${C.border}`, borderRadius: 12 }}>
-									<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>REQUESTS LEFT</div>
-									<div style={{ fontSize: 22, fontWeight: 800 }}>{results.free_requests_left ?? "—"}</div>
+								<div
+									style={{
+										padding: 12,
+										border: `1px solid ${C.border}`,
+										borderRadius: 12,
+									}}
+								>
+									<div
+										style={{
+											color: C.dimText,
+											fontSize: 10,
+											letterSpacing: 1.2,
+										}}
+									>
+										REQUESTS LEFT
+									</div>
+									<div style={{ fontSize: 22, fontWeight: 800 }}>
+										{results.free_requests_left ?? "—"}
+									</div>
 								</div>
 							</div>
 						</div>
@@ -1598,39 +2022,86 @@ function OsintFinderPage({ onNavigate }) {
 								{Object.entries(results.List).map(([dbName, dbData]) => (
 									<div key={dbName} style={{ ...styles.panel }}>
 										<div style={styles.panelHeader}>{dbName}</div>
-										<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
+										<div
+											style={{ ...styles.panelBody, display: "grid", gap: 10 }}
+										>
 											{dbData.InfoLeak && (
-												<div style={{ color: C.yellow, fontSize: 12 }}>{dbData.InfoLeak}</div>
+												<div style={{ color: C.yellow, fontSize: 12 }}>
+													{dbData.InfoLeak}
+												</div>
 											)}
 											{dbData.Data?.map((entry, entryIdx) => (
-												<div key={`${dbName}-${entryIdx}`} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: "grid", gap: 8 }}>
-													<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.2 }}>
+												<div
+													key={`${dbName}-${entryIdx}`}
+													style={{
+														border: `1px solid ${C.border}`,
+														borderRadius: 12,
+														padding: 12,
+														display: "grid",
+														gap: 8,
+													}}
+												>
+													<div
+														style={{
+															color: C.dimText,
+															fontSize: 10,
+															letterSpacing: 1.2,
+														}}
+													>
 														RECORD #{entryIdx + 1}
 													</div>
-													<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-														{Object.entries(entry).map(([fieldName, fieldValue]) => {
-															if (!fieldValue || fieldValue === "null") return null;
-															const fieldType = getOsintFieldType(fieldName);
-															const color =
-																fieldType === "sensitive"
-																	? C.red
-																	: fieldType === "contact"
-																		? C.accent
-																		: fieldType === "identity"
-																			? C.green
-																			: C.text;
-																const value = maskOsintValue(fieldValue, fieldType);
+													<div
+														style={{
+															display: "grid",
+															gridTemplateColumns:
+																"repeat(auto-fit, minmax(180px, 1fr))",
+															gap: 10,
+														}}
+													>
+														{Object.entries(entry).map(
+															([fieldName, fieldValue]) => {
+																if (!fieldValue || fieldValue === "null")
+																	return null;
+																const fieldType = getOsintFieldType(fieldName);
+																const color =
+																	fieldType === "sensitive"
+																		? C.red
+																		: fieldType === "contact"
+																			? C.accent
+																			: fieldType === "identity"
+																				? C.green
+																				: C.text;
+																const value = maskOsintValue(
+																	fieldValue,
+																	fieldType,
+																);
 																return (
-																	<div key={`${dbName}-${entryIdx}-${fieldName}`}>
-																		<div style={{ color: C.dimText, fontSize: 10, letterSpacing: 1.1 }}>
+																	<div
+																		key={`${dbName}-${entryIdx}-${fieldName}`}
+																	>
+																		<div
+																			style={{
+																				color: C.dimText,
+																				fontSize: 10,
+																				letterSpacing: 1.1,
+																			}}
+																		>
 																			{formatOsintFieldName(fieldName)}
 																		</div>
-																		<div style={{ color, fontSize: 12, fontWeight: 700, wordBreak: "break-word" }}>
+																		<div
+																			style={{
+																				color,
+																				fontSize: 12,
+																				fontWeight: 700,
+																				wordBreak: "break-word",
+																			}}
+																		>
 																			{value}
 																		</div>
 																	</div>
 																);
-															})}
+															},
+														)}
 													</div>
 												</div>
 											))}
@@ -1646,18 +2117,31 @@ function OsintFinderPage({ onNavigate }) {
 	);
 }
 
-function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData, alerts }) {
+function LandingPage({
+	onNavigate,
+	telemetry,
+	status,
+	telemetryArchive,
+	pathData,
+	alerts,
+}) {
 	const quickStats = useMemo(() => {
 		const archive = Array.isArray(telemetryArchive) ? telemetryArchive : [];
 		const latest = archive[archive.length - 1] || telemetry || {};
 		const avgBattery = archive.length
-			? archive.reduce((sum, item) => sum + (Number(item?.estV) || 0), 0) / archive.length
+			? archive.reduce((sum, item) => sum + (Number(item?.estV) || 0), 0) /
+				archive.length
 			: Number(latest?.estV) || 0;
 		return {
 			samples: archive.length,
 			victims: status?.victim_count || 0,
-			distanceM: ((pathData?.total_dist_cm || latest?.distTotal || 0) / 100).toFixed(1),
-			battery: Number.isFinite(avgBattery) && avgBattery ? avgBattery.toFixed(1) : latest?.estV?.toFixed?.(1) || "—",
+			distanceM: (
+				(pathData?.total_dist_cm || latest?.distTotal || 0) / 100
+			).toFixed(1),
+			battery:
+				Number.isFinite(avgBattery) && avgBattery
+					? avgBattery.toFixed(1)
+					: latest?.estV?.toFixed?.(1) || "—",
 		};
 	}, [pathData, status, telemetry, telemetryArchive]);
 
@@ -1667,40 +2151,138 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 				<div style={styles.logo}>
 					<span style={{ fontSize: 22 }}>⬡</span>
 					RESCUE ROVER
-					<span style={{ color: C.dimText, fontWeight: 400, fontSize: 12 }}>MISSION CONTROL</span>
+					<span style={{ color: C.dimText, fontWeight: 400, fontSize: 12 }}>
+						MISSION CONTROL
+					</span>
 				</div>
-				<div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-					<PageButton active onClick={() => onNavigate("landing")}>Home</PageButton>
-					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
+				<div
+					style={{
+						marginLeft: "auto",
+						display: "flex",
+						gap: 8,
+						flexWrap: "wrap",
+					}}
+				>
+					<PageButton active onClick={() => onNavigate("landing")}>
+						Home
+					</PageButton>
+					<PageButton onClick={() => onNavigate("dashboard")}>
+						Dashboard
+					</PageButton>
 					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
-					<PageButton onClick={() => onNavigate("survivor")}>Survivor</PageButton>
+					<PageButton onClick={() => onNavigate("survivor")}>
+						Survivor
+					</PageButton>
 					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
 					<PageButton onClick={() => onNavigate("osint")}>OSINT</PageButton>
 				</div>
 			</div>
-			<div style={{ padding: 16, maxWidth: 1400, width: "100%", margin: "0 auto" }}>
-				<div style={{ background: `linear-gradient(135deg, ${C.surface}, ${C.panel})`, border: `1px solid ${C.border}`, borderRadius: 20, padding: 22, marginBottom: 12, boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
-					<div style={{ color: C.accent, letterSpacing: 2, fontSize: 11, textTransform: "uppercase" }}>Live Rover Operations</div>
-					<h1 style={{ margin: "10px 0 8px", fontSize: 40, lineHeight: 1.05, color: C.heading }}>
-						Satellite-grade mission tracking for rover telemetry, victims, and path history.
+			<div
+				style={{ padding: 16, maxWidth: 1400, width: "100%", margin: "0 auto" }}
+			>
+				<div
+					style={{
+						background: `linear-gradient(135deg, ${C.surface}, ${C.panel})`,
+						border: `1px solid ${C.border}`,
+						borderRadius: 20,
+						padding: 22,
+						marginBottom: 12,
+						boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+					}}
+				>
+					<div
+						style={{
+							color: C.accent,
+							letterSpacing: 2,
+							fontSize: 11,
+							textTransform: "uppercase",
+						}}
+					>
+						Live Rover Operations
+					</div>
+					<h1
+						style={{
+							margin: "10px 0 8px",
+							fontSize: 40,
+							lineHeight: 1.05,
+							color: C.heading,
+						}}
+					>
+						Satellite-grade mission tracking for rover telemetry, victims, and
+						path history.
 					</h1>
-					<p style={{ maxWidth: 860, color: C.dimText, fontSize: 14, lineHeight: 1.6 }}>
-						The dashboard stores incoming telemetry, plots odometry on a satellite map, keeps a searchable archive, and surfaces mission controls, camera, and alerts in one place.
+					<p
+						style={{
+							maxWidth: 860,
+							color: C.dimText,
+							fontSize: 14,
+							lineHeight: 1.6,
+						}}
+					>
+						The dashboard stores incoming telemetry, plots odometry on a
+						satellite map, keeps a searchable archive, and surfaces mission
+						controls, camera, and alerts in one place.
 					</p>
-					<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-						<button onClick={() => onNavigate("dashboard")} style={heroPrimaryButton}>Open Dashboard</button>
-						<button onClick={() => onNavigate("map")} style={heroSecondaryButton}>Open Satellite Map</button>
+					<div
+						style={{
+							display: "flex",
+							gap: 10,
+							flexWrap: "wrap",
+							marginTop: 14,
+						}}
+					>
+						<button
+							onClick={() => onNavigate("dashboard")}
+							style={heroPrimaryButton}
+						>
+							Open Dashboard
+						</button>
+						<button
+							onClick={() => onNavigate("map")}
+							style={heroSecondaryButton}
+						>
+							Open Satellite Map
+						</button>
 					</div>
 				</div>
 
-				<div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 12 }}>
-					<HeroStat label="Telemetry samples" value={quickStats.samples} tone={C.blue} />
-					<HeroStat label="Victims located" value={quickStats.victims} tone={C.yellow} />
-					<HeroStat label="Total distance" value={`${quickStats.distanceM} m`} tone={C.green} />
-					<HeroStat label="Average battery" value={`${quickStats.battery} V`} tone={C.accent} />
+				<div
+					style={{
+						display: "grid",
+						gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+						gap: 10,
+						marginBottom: 12,
+					}}
+				>
+					<HeroStat
+						label="Telemetry samples"
+						value={quickStats.samples}
+						tone={C.blue}
+					/>
+					<HeroStat
+						label="Victims located"
+						value={quickStats.victims}
+						tone={C.yellow}
+					/>
+					<HeroStat
+						label="Total distance"
+						value={`${quickStats.distanceM} m`}
+						tone={C.green}
+					/>
+					<HeroStat
+						label="Average battery"
+						value={`${quickStats.battery} V`}
+						tone={C.accent}
+					/>
 				</div>
 
-				<div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 10 }}>
+				<div
+					style={{
+						display: "grid",
+						gridTemplateColumns: "1.2fr 0.8fr",
+						gap: 10,
+					}}
+				>
 					<div style={{ ...styles.panel, borderRadius: 20 }}>
 						<div style={styles.panelHeader}>MISSION HIGHLIGHTS</div>
 						<div style={{ ...styles.panelBody, display: "grid", gap: 8 }}>
@@ -1710,17 +2292,34 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 								"Camera stream and manual command controls",
 								"Alert feed with watchdog events",
 							].map((item) => (
-								<div key={item} style={{ padding: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10 }}>{item}</div>
+								<div
+									key={item}
+									style={{
+										padding: 10,
+										background: C.surface,
+										border: `1px solid ${C.border}`,
+										borderRadius: 10,
+									}}
+								>
+									{item}
+								</div>
 							))}
 						</div>
 					</div>
 					<div style={{ ...styles.panel, borderRadius: 20 }}>
 						<div style={styles.panelHeader}>STATUS SNAPSHOT</div>
 						<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
-							<TelRow label="Pi" value={status?.pi_connected ? "ONLINE" : "OFFLINE"} color={status?.pi_connected ? C.green : C.red} />
+							<TelRow
+								label="Pi"
+								value={status?.pi_connected ? "ONLINE" : "OFFLINE"}
+								color={status?.pi_connected ? C.green : C.red}
+							/>
 							<TelRow label="Rover" value={status?.rover_state || "STP"} />
 							<TelRow label="Alerts" value={alerts?.length || 0} />
-							<TelRow label="Mission active" value={status?.mission_active ? "YES" : "NO"} />
+							<TelRow
+								label="Mission active"
+								value={status?.mission_active ? "YES" : "NO"}
+							/>
 							<TelRow label="Camera" value="LIVE MJPEG" />
 						</div>
 					</div>
@@ -1730,21 +2329,34 @@ function LandingPage({ onNavigate, telemetry, status, telemetryArchive, pathData
 	);
 }
 
-function TelemetryArchivePage({ onNavigate, telemetryArchive, telemetry, status }) {
+function TelemetryArchivePage({
+	onNavigate,
+	telemetryArchive,
+	telemetry,
+	status,
+}) {
 	const history = Array.isArray(telemetryArchive) ? telemetryArchive : [];
 	const latest = history[history.length - 1] || telemetry || {};
 	const stats = useMemo(() => {
-		const batteryValues = history.map((item) => Number(item?.estV)).filter((value) => Number.isFinite(value));
+		const batteryValues = history
+			.map((item) => Number(item?.estV))
+			.filter((value) => Number.isFinite(value));
 		return {
 			total: history.length,
-			minBatt: batteryValues.length ? Math.min(...batteryValues).toFixed(1) : "—",
-			maxBatt: batteryValues.length ? Math.max(...batteryValues).toFixed(1) : "—",
+			minBatt: batteryValues.length
+				? Math.min(...batteryValues).toFixed(1)
+				: "—",
+			maxBatt: batteryValues.length
+				? Math.max(...batteryValues).toFixed(1)
+				: "—",
 			latestState: latest?.state || "STP",
 		};
 	}, [history, latest]);
 
 	const exportJson = () => {
-		const blob = new Blob([JSON.stringify(history, null, 2)], { type: "application/json" });
+		const blob = new Blob([JSON.stringify(history, null, 2)], {
+			type: "application/json",
+		});
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement("a");
 		link.href = url;
@@ -1754,18 +2366,30 @@ function TelemetryArchivePage({ onNavigate, telemetryArchive, telemetry, status 
 	};
 
 	const exportCsv = () => {
-		const header = ["ms", "x", "y", "heading", "dist", "distTotal", "estV", "state", "flags"].join(",");
-		const rows = history.map((item) => [
-			item?.ms ?? "",
-			item?.abs_x ?? item?.x ?? "",
-			item?.abs_y ?? item?.y ?? "",
-			item?.heading ?? "",
-			item?.dist ?? "",
-			item?.distTotal ?? "",
-			item?.estV ?? "",
-			item?.state ?? "",
-			item?.flags ?? "",
-		].join(","));
+		const header = [
+			"ms",
+			"x",
+			"y",
+			"heading",
+			"dist",
+			"distTotal",
+			"estV",
+			"state",
+			"flags",
+		].join(",");
+		const rows = history.map((item) =>
+			[
+				item?.ms ?? "",
+				item?.abs_x ?? item?.x ?? "",
+				item?.abs_y ?? item?.y ?? "",
+				item?.heading ?? "",
+				item?.dist ?? "",
+				item?.distTotal ?? "",
+				item?.estV ?? "",
+				item?.state ?? "",
+				item?.flags ?? "",
+			].join(","),
+		);
 		const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement("a");
@@ -1778,32 +2402,86 @@ function TelemetryArchivePage({ onNavigate, telemetryArchive, telemetry, status 
 	return (
 		<div style={{ ...styles.app, overflow: "auto" }}>
 			<div style={styles.topBar}>
-				<div style={styles.logo}><span style={{ fontSize: 22 }}>⬡</span>TELEMETRY ARCHIVE</div>
-				<div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+				<div style={styles.logo}>
+					<span style={{ fontSize: 22 }}>⬡</span>TELEMETRY ARCHIVE
+				</div>
+				<div
+					style={{
+						marginLeft: "auto",
+						display: "flex",
+						gap: 8,
+						flexWrap: "wrap",
+					}}
+				>
 					<PageButton onClick={() => onNavigate("landing")}>Home</PageButton>
-					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
+					<PageButton onClick={() => onNavigate("dashboard")}>
+						Dashboard
+					</PageButton>
 					<PageButton onClick={() => onNavigate("map")}>Map</PageButton>
-					<PageButton active onClick={() => onNavigate("archive")}>Archive</PageButton>
+					<PageButton active onClick={() => onNavigate("archive")}>
+						Archive
+					</PageButton>
 					<PageButton onClick={() => onNavigate("osint")}>OSINT</PageButton>
 				</div>
 			</div>
 			<div style={{ padding: 22, display: "grid", gap: 16 }}>
-				<div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+				<div
+					style={{
+						display: "flex",
+						justifyContent: "space-between",
+						gap: 12,
+						alignItems: "center",
+						flexWrap: "wrap",
+					}}
+				>
 					<div>
-						<div style={{ color: C.dimText, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" }}>Stored telemetry</div>
-						<div style={{ fontSize: 28, fontWeight: 800, color: C.heading }}>Visualize and export the mission log</div>
+						<div
+							style={{
+								color: C.dimText,
+								fontSize: 11,
+								letterSpacing: 1.5,
+								textTransform: "uppercase",
+							}}
+						>
+							Stored telemetry
+						</div>
+						<div style={{ fontSize: 28, fontWeight: 800, color: C.heading }}>
+							Visualize and export the mission log
+						</div>
 					</div>
 					<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-						<button onClick={exportJson} style={heroPrimaryButton}>Download JSON</button>
-						<button onClick={exportCsv} style={heroSecondaryButton}>Download CSV</button>
+						<button onClick={exportJson} style={heroPrimaryButton}>
+							Download JSON
+						</button>
+						<button onClick={exportCsv} style={heroSecondaryButton}>
+							Download CSV
+						</button>
 					</div>
 				</div>
 
-				<div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+				<div
+					style={{
+						display: "grid",
+						gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+						gap: 12,
+					}}
+				>
 					<HeroStat label="Samples stored" value={stats.total} tone={C.blue} />
-					<HeroStat label="Latest rover state" value={stats.latestState} tone={C.accent} />
-					<HeroStat label="Battery min/max" value={`${stats.minBatt} / ${stats.maxBatt}`} tone={C.green} />
-					<HeroStat label="Victims" value={status?.victim_count || 0} tone={C.yellow} />
+					<HeroStat
+						label="Latest rover state"
+						value={stats.latestState}
+						tone={C.accent}
+					/>
+					<HeroStat
+						label="Battery min/max"
+						value={`${stats.minBatt} / ${stats.maxBatt}`}
+						tone={C.green}
+					/>
+					<HeroStat
+						label="Victims"
+						value={status?.victim_count || 0}
+						tone={C.yellow}
+					/>
 				</div>
 
 				<div style={{ ...styles.panel, borderRadius: 24, minHeight: 260 }}>
@@ -1816,7 +2494,13 @@ function TelemetryArchivePage({ onNavigate, telemetryArchive, telemetry, status 
 				<div style={{ ...styles.panel, borderRadius: 24 }}>
 					<div style={styles.panelHeader}>LATEST SAMPLES</div>
 					<div style={{ ...styles.panelBody, padding: 10, maxHeight: 420 }}>
-						<table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+						<table
+							style={{
+								width: "100%",
+								borderCollapse: "collapse",
+								fontSize: 11,
+							}}
+						>
 							<thead>
 								<tr style={{ color: C.dimText, textAlign: "left" }}>
 									<th style={archiveCell}>Time</th>
@@ -1830,18 +2514,40 @@ function TelemetryArchivePage({ onNavigate, telemetryArchive, telemetry, status 
 								</tr>
 							</thead>
 							<tbody>
-								{history.slice(-40).reverse().map((item, index) => (
-									<tr key={`${item?.ms ?? index}-${index}`} style={{ borderTop: `1px solid ${C.border}` }}>
-										<td style={archiveCell}>{item?.ms != null ? `${(item.ms / 1000).toFixed(1)}s` : "—"}</td>
-										<td style={archiveCell}>{Number(item?.abs_x ?? item?.x ?? NaN).toFixed?.(1) ?? "—"}</td>
-										<td style={archiveCell}>{Number(item?.abs_y ?? item?.y ?? NaN).toFixed?.(1) ?? "—"}</td>
-										<td style={archiveCell}>{Number(item?.heading ?? NaN).toFixed?.(1) ?? "—"}</td>
-										<td style={archiveCell}>{item?.dist === 999 ? "OOR" : item?.dist ?? "—"}</td>
-										<td style={archiveCell}>{Number(item?.estV ?? NaN).toFixed?.(1) ?? "—"}</td>
-										<td style={archiveCell}>{item?.state ?? "—"}</td>
-										<td style={archiveCell}>{item?.flags ?? "—"}</td>
-									</tr>
-								))}
+								{history
+									.slice(-40)
+									.reverse()
+									.map((item, index) => (
+										<tr
+											key={`${item?.ms ?? index}-${index}`}
+											style={{ borderTop: `1px solid ${C.border}` }}
+										>
+											<td style={archiveCell}>
+												{item?.ms != null
+													? `${(item.ms / 1000).toFixed(1)}s`
+													: "—"}
+											</td>
+											<td style={archiveCell}>
+												{Number(item?.abs_x ?? item?.x ?? NaN).toFixed?.(1) ??
+													"—"}
+											</td>
+											<td style={archiveCell}>
+												{Number(item?.abs_y ?? item?.y ?? NaN).toFixed?.(1) ??
+													"—"}
+											</td>
+											<td style={archiveCell}>
+												{Number(item?.heading ?? NaN).toFixed?.(1) ?? "—"}
+											</td>
+											<td style={archiveCell}>
+												{item?.dist === 999 ? "OOR" : (item?.dist ?? "—")}
+											</td>
+											<td style={archiveCell}>
+												{Number(item?.estV ?? NaN).toFixed?.(1) ?? "—"}
+											</td>
+											<td style={archiveCell}>{item?.state ?? "—"}</td>
+											<td style={archiveCell}>{item?.flags ?? "—"}</td>
+										</tr>
+									))}
 							</tbody>
 						</table>
 					</div>
@@ -1862,8 +2568,19 @@ function MapPage({
 	httpBase,
 	sendMode,
 }) {
-	const routeState = pathData?.route && typeof pathData.route === "object" ? pathData.route : { waypoints: [], status: "idle", paused: false, active_index: 0, name: "Patrol Route" };
-	const backendWaypoints = Array.isArray(routeState.waypoints) ? routeState.waypoints : [];
+	const routeState =
+		pathData?.route && typeof pathData.route === "object"
+			? pathData.route
+			: {
+					waypoints: [],
+					status: "idle",
+					paused: false,
+					active_index: 0,
+					name: "Patrol Route",
+				};
+	const backendWaypoints = Array.isArray(routeState.waypoints)
+		? routeState.waypoints
+		: [];
 	const [plannerMode, setPlannerMode] = useState("waypoint");
 	const [routeName, setRouteName] = useState(routeState.name || "Patrol Route");
 	const [draftWaypoints, setDraftWaypoints] = useState(backendWaypoints);
@@ -1882,61 +2599,83 @@ function MapPage({
 		}
 	}, [routeName, routeState.name]);
 
-	const postJson = useCallback(async (url, body) => {
-		const response = await fetch(`${httpBase}${url}`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
-		});
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
-		}
-		return response.json();
-	}, [httpBase]);
-
-	const updateRoute = useCallback(async (action, overrides = {}) => {
-		const route = {
-			name: routeName.trim() || "Patrol Route",
-			waypoints: draftWaypoints,
-			status: overrides.status || routeState.status || "idle",
-			paused: Boolean(overrides.paused ?? routeState.paused ?? false),
-			active_index: Number.isFinite(overrides.active_index) ? overrides.active_index : routeState.active_index || 0,
-		};
-
-		setIsSaving(true);
-		try {
-			await postJson("/api/route", { action, route });
-			if (action === "start") {
-				await sendMode?.("follow-path");
+	const postJson = useCallback(
+		async (url, body) => {
+			const response = await fetch(`${httpBase}${url}`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
 			}
-			if (action === "pause") {
-				await sendMode?.("hold-position");
-			}
-			if (action === "stop") {
-				await sendMode?.("emergency-stop");
-			}
-		} finally {
-			setIsSaving(false);
-		}
-	}, [draftWaypoints, postJson, routeName, routeState.active_index, routeState.paused, routeState.status, sendMode]);
+			return response.json();
+		},
+		[httpBase],
+	);
 
-	const handleWaypointAdd = useCallback((latlng) => {
-		const next = [
-			...draftWaypoints,
-			{ lat: Number(latlng.lat.toFixed(6)), lng: Number(latlng.lng.toFixed(6)) },
-		];
-		setDraftWaypoints(next);
-		postJson("/api/route", {
-			action: "set",
-			route: {
+	const updateRoute = useCallback(
+		async (action, overrides = {}) => {
+			const route = {
 				name: routeName.trim() || "Patrol Route",
-				waypoints: next,
-				status: "idle",
-				paused: false,
-				active_index: 0,
-			},
-		}).catch(() => {});
-	}, [draftWaypoints, postJson, routeName]);
+				waypoints: draftWaypoints,
+				status: overrides.status || routeState.status || "idle",
+				paused: Boolean(overrides.paused ?? routeState.paused ?? false),
+				active_index: Number.isFinite(overrides.active_index)
+					? overrides.active_index
+					: routeState.active_index || 0,
+			};
+
+			setIsSaving(true);
+			try {
+				await postJson("/api/route", { action, route });
+				if (action === "start") {
+					await sendMode?.("follow-path");
+				}
+				if (action === "pause") {
+					await sendMode?.("hold-position");
+				}
+				if (action === "stop") {
+					await sendMode?.("emergency-stop");
+				}
+			} finally {
+				setIsSaving(false);
+			}
+		},
+		[
+			draftWaypoints,
+			postJson,
+			routeName,
+			routeState.active_index,
+			routeState.paused,
+			routeState.status,
+			sendMode,
+		],
+	);
+
+	const handleWaypointAdd = useCallback(
+		(latlng) => {
+			const next = [
+				...draftWaypoints,
+				{
+					lat: Number(latlng.lat.toFixed(6)),
+					lng: Number(latlng.lng.toFixed(6)),
+				},
+			];
+			setDraftWaypoints(next);
+			postJson("/api/route", {
+				action: "set",
+				route: {
+					name: routeName.trim() || "Patrol Route",
+					waypoints: next,
+					status: "idle",
+					paused: false,
+					active_index: 0,
+				},
+			}).catch(() => {});
+		},
+		[draftWaypoints, postJson, routeName],
+	);
 
 	const handleWaypointAddManual = useCallback(() => {
 		const lat = Number.parseFloat(waypointLat);
@@ -1960,23 +2699,47 @@ function MapPage({
 
 	const clearRoute = useCallback(async () => {
 		setDraftWaypoints([]);
-		await updateRoute("clear", { status: "idle", paused: false, active_index: 0 });
+		await updateRoute("clear", {
+			status: "idle",
+			paused: false,
+			active_index: 0,
+		});
 	}, [updateRoute]);
 
 	return (
 		<div style={{ ...styles.app, overflow: "auto" }}>
 			<div style={styles.topBar}>
-				<div style={styles.logo}><span style={{ fontSize: 22 }}>⬡</span>SATELLITE MAP</div>
-				<div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+				<div style={styles.logo}>
+					<span style={{ fontSize: 22 }}>⬡</span>SATELLITE MAP
+				</div>
+				<div
+					style={{
+						marginLeft: "auto",
+						display: "flex",
+						gap: 8,
+						flexWrap: "wrap",
+					}}
+				>
 					<PageButton onClick={() => onNavigate("landing")}>Home</PageButton>
-					<PageButton onClick={() => onNavigate("dashboard")}>Dashboard</PageButton>
-					<PageButton active onClick={() => onNavigate("map")}>Map</PageButton>
+					<PageButton onClick={() => onNavigate("dashboard")}>
+						Dashboard
+					</PageButton>
+					<PageButton active onClick={() => onNavigate("map")}>
+						Map
+					</PageButton>
 					<PageButton onClick={() => onNavigate("archive")}>Archive</PageButton>
 					<PageButton onClick={() => onNavigate("osint")}>OSINT</PageButton>
 				</div>
 			</div>
 			<div style={{ padding: 20, display: "grid", gap: 14 }}>
-				<div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 14, alignItems: "start" }}>
+				<div
+					style={{
+						display: "grid",
+						gridTemplateColumns: "1.1fr 0.9fr",
+						gap: 14,
+						alignItems: "start",
+					}}
+				>
 					<div style={{ display: "grid", gap: 14 }}>
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
 							<SatelliteMapPanel
@@ -1992,20 +2755,42 @@ function MapPage({
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
 							<div style={styles.panelHeader}>MISSION SNAPSHOT</div>
 							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
-								<TelRow label="Pi" value={status?.pi_connected ? "ONLINE" : "OFFLINE"} color={status?.pi_connected ? C.green : C.red} />
-								<TelRow label="Rover state" value={status?.rover_state || "STP"} />
-								<TelRow label="Victims" value={status?.victim_count || 0} color={status?.victim_count ? C.yellow : C.text} />
+								<TelRow
+									label="Pi"
+									value={status?.pi_connected ? "ONLINE" : "OFFLINE"}
+									color={status?.pi_connected ? C.green : C.red}
+								/>
+								<TelRow
+									label="Rover state"
+									value={status?.rover_state || "STP"}
+								/>
+								<TelRow
+									label="Victims"
+									value={status?.victim_count || 0}
+									color={status?.victim_count ? C.yellow : C.text}
+								/>
 								<TelRow label="Camera" value="LIVE" />
-								<TelRow label="Planner mode" value={plannerMode.toUpperCase()} />
+								<TelRow
+									label="Planner mode"
+									value={plannerMode.toUpperCase()}
+								/>
 							</div>
 						</div>
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
 							<div style={styles.panelHeader}>MARKERS</div>
 							<div style={{ ...styles.panelBody, display: "grid", gap: 8 }}>
-								<div style={markerLegendItem}><span style={{ color: C.green }}>●</span> Rover</div>
-								<div style={markerLegendItem}><span style={{ color: C.accent }}>━</span> Live path</div>
-								<div style={markerLegendItem}><span style={{ color: C.blue }}>●</span> Waypoint</div>
-								<div style={markerLegendItem}><span style={{ color: C.yellow }}>●</span> Victim</div>
+								<div style={markerLegendItem}>
+									<span style={{ color: C.green }}>●</span> Rover
+								</div>
+								<div style={markerLegendItem}>
+									<span style={{ color: C.accent }}>━</span> Live path
+								</div>
+								<div style={markerLegendItem}>
+									<span style={{ color: C.blue }}>●</span> Waypoint
+								</div>
+								<div style={markerLegendItem}>
+									<span style={{ color: C.yellow }}>●</span> Victim
+								</div>
 							</div>
 						</div>
 					</div>
@@ -2013,15 +2798,44 @@ function MapPage({
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
 							<div style={styles.panelHeader}>ROUTE PLANNER</div>
 							<div style={{ ...styles.panelBody, display: "grid", gap: 10 }}>
-								<div style={{ color: C.dimText, fontSize: 11, lineHeight: 1.6 }}>
-										Choose <strong>Waypoint</strong> mode and click the map to build a patrol path.
+								<div
+									style={{ color: C.dimText, fontSize: 11, lineHeight: 1.6 }}
+								>
+									Choose <strong>Waypoint</strong> mode and click the map to
+									build a patrol path.
 								</div>
-								<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+								<label
+									style={{
+										display: "grid",
+										gap: 4,
+										fontSize: 10,
+										color: C.dimText,
+									}}
+								>
 									Route name
-									<input value={routeName} onChange={(e) => setRouteName(e.target.value)} style={mapInputStyle} placeholder="Patrol Route" />
+									<input
+										value={routeName}
+										onChange={(e) => setRouteName(e.target.value)}
+										style={mapInputStyle}
+										placeholder="Patrol Route"
+									/>
 								</label>
-								<div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr auto", alignItems: "end" }}>
-									<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+								<div
+									style={{
+										display: "grid",
+										gap: 6,
+										gridTemplateColumns: "1fr 1fr auto",
+										alignItems: "end",
+									}}
+								>
+									<label
+										style={{
+											display: "grid",
+											gap: 4,
+											fontSize: 10,
+											color: C.dimText,
+										}}
+									>
 										Waypoint Lat
 										<input
 											type="number"
@@ -2032,7 +2846,14 @@ function MapPage({
 											style={mapInputStyle}
 										/>
 									</label>
-									<label style={{ display: "grid", gap: 4, fontSize: 10, color: C.dimText }}>
+									<label
+										style={{
+											display: "grid",
+											gap: 4,
+											fontSize: 10,
+											color: C.dimText,
+										}}
+									>
 										Waypoint Lng
 										<input
 											type="number"
@@ -2043,32 +2864,136 @@ function MapPage({
 											style={mapInputStyle}
 										/>
 									</label>
-									<button type="button" onClick={handleWaypointAddManual} style={{ ...heroSecondaryButton, padding: "8px 10px", borderRadius: 12 }}>
+									<button
+										type="button"
+										onClick={handleWaypointAddManual}
+										style={{
+											...heroSecondaryButton,
+											padding: "8px 10px",
+											borderRadius: 12,
+										}}
+									>
 										Add waypoint
 									</button>
 								</div>
 								<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-									<Vb active={plannerMode === "waypoint"} onClick={() => setPlannerMode("waypoint")}>Waypoint</Vb>
-									<Vb active={plannerMode === "inspect"} onClick={() => setPlannerMode("inspect")}>Inspect</Vb>
+									<Vb
+										active={plannerMode === "waypoint"}
+										onClick={() => setPlannerMode("waypoint")}
+									>
+										Waypoint
+									</Vb>
+									<Vb
+										active={plannerMode === "inspect"}
+										onClick={() => setPlannerMode("inspect")}
+									>
+										Inspect
+									</Vb>
 								</div>
-								<div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-									<button type="button" disabled={isSaving} onClick={() => updateRoute("set")} style={heroPrimaryButton}>Save route</button>
-									<button type="button" disabled={isSaving} onClick={() => updateRoute("start", { status: "active", paused: false, active_index: 0 })} style={heroSecondaryButton}>Start patrol</button>
-									<button type="button" disabled={isSaving} onClick={() => updateRoute("pause", { status: "paused", paused: true })} style={heroSecondaryButton}>Pause</button>
-									<button type="button" disabled={isSaving} onClick={() => updateRoute("resume", { status: "active", paused: false })} style={heroSecondaryButton}>Resume</button>
-									<button type="button" disabled={isSaving} onClick={() => updateRoute("skip", { status: "active", paused: false, active_index: Number(routeState.active_index || 0) + 1 })} style={heroSecondaryButton}>Skip</button>
-									<button type="button" disabled={isSaving} onClick={clearRoute} style={{ ...heroSecondaryButton, color: C.red, borderColor: C.red }}>Clear</button>
+								<div
+									style={{
+										display: "grid",
+										gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+										gap: 8,
+									}}
+								>
+									<button
+										type="button"
+										disabled={isSaving}
+										onClick={() => updateRoute("set")}
+										style={heroPrimaryButton}
+									>
+										Save route
+									</button>
+									<button
+										type="button"
+										disabled={isSaving}
+										onClick={() =>
+											updateRoute("start", {
+												status: "active",
+												paused: false,
+												active_index: 0,
+											})
+										}
+										style={heroSecondaryButton}
+									>
+										Start patrol
+									</button>
+									<button
+										type="button"
+										disabled={isSaving}
+										onClick={() =>
+											updateRoute("pause", { status: "paused", paused: true })
+										}
+										style={heroSecondaryButton}
+									>
+										Pause
+									</button>
+									<button
+										type="button"
+										disabled={isSaving}
+										onClick={() =>
+											updateRoute("resume", { status: "active", paused: false })
+										}
+										style={heroSecondaryButton}
+									>
+										Resume
+									</button>
+									<button
+										type="button"
+										disabled={isSaving}
+										onClick={() =>
+											updateRoute("skip", {
+												status: "active",
+												paused: false,
+												active_index: Number(routeState.active_index || 0) + 1,
+											})
+										}
+										style={heroSecondaryButton}
+									>
+										Skip
+									</button>
+									<button
+										type="button"
+										disabled={isSaving}
+										onClick={clearRoute}
+										style={{
+											...heroSecondaryButton,
+											color: C.red,
+											borderColor: C.red,
+										}}
+									>
+										Clear
+									</button>
 								</div>
-								<div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: C.dimText }}>
-									<Pill color={C.blue} bg="#10263a">{draftWaypoints.length} waypoints</Pill>
-									<Pill color={C.green} bg="#0f2414">{routeState.status || "idle"}</Pill>
+								<div
+									style={{
+										display: "flex",
+										gap: 8,
+										flexWrap: "wrap",
+										fontSize: 11,
+										color: C.dimText,
+									}}
+								>
+									<Pill color={C.blue} bg="#10263a">
+										{draftWaypoints.length} waypoints
+									</Pill>
+									<Pill color={C.green} bg="#0f2414">
+										{routeState.status || "idle"}
+									</Pill>
 								</div>
 							</div>
 						</div>
 						<div style={{ ...styles.panel, borderRadius: 24 }}>
 							<div style={styles.panelHeader}>AUTONOMY MODES</div>
 							<div style={{ ...styles.panelBody, display: "grid", gap: 8 }}>
-								{["follow-path", "search-grid", "return-to-home", "hold-position", "emergency-stop"].map((mode) => (
+								{[
+									"follow-path",
+									"search-grid",
+									"return-to-home",
+									"hold-position",
+									"emergency-stop",
+								].map((mode) => (
 									<button
 										key={mode}
 										type="button"
@@ -2077,8 +3002,14 @@ function MapPage({
 											padding: "10px 12px",
 											borderRadius: 12,
 											border: `1px solid ${status?.motion_mode === mode && status?.motion_active ? C.accent : C.border}`,
-											background: status?.motion_mode === mode && status?.motion_active ? C.accentDim : C.surface,
-											color: status?.motion_mode === mode && status?.motion_active ? C.accent : C.text,
+											background:
+												status?.motion_mode === mode && status?.motion_active
+													? C.accentDim
+													: C.surface,
+											color:
+												status?.motion_mode === mode && status?.motion_active
+													? C.accent
+													: C.text,
 											fontFamily: "inherit",
 											fontWeight: 700,
 											letterSpacing: 1,
@@ -2160,7 +3091,9 @@ function App() {
 	const supportsAuto = Boolean(status?.capabilities?.commands?.includes("A"));
 	const supportedModes = status?.capabilities?.modes || [];
 	const supportsModes = supportedModes.length > 0;
-	const telemetryHistory = telemetryArchive?.length ? telemetryArchive : telHistory;
+	const telemetryHistory = telemetryArchive?.length
+		? telemetryArchive
+		: telHistory;
 	const navigate = useCallback((nextPage) => setPage(nextPage), []);
 
 	useEffect(() => {
@@ -2189,7 +3122,10 @@ function App() {
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
-		window.localStorage.setItem(LOCAL_STORAGE_MAP_ORIGIN_KEY, JSON.stringify(mapOrigin));
+		window.localStorage.setItem(
+			LOCAL_STORAGE_MAP_ORIGIN_KEY,
+			JSON.stringify(mapOrigin),
+		);
 	}, [mapOrigin]);
 
 	useEffect(() => {
@@ -2246,11 +3182,7 @@ function App() {
 
 	if (page === "survivor") {
 		return (
-			<SurvivorPage
-				onNavigate={navigate}
-				status={status}
-				httpBase={httpBase}
-			/>
+			<SurvivorPage onNavigate={navigate} status={status} httpBase={httpBase} />
 		);
 	}
 
@@ -2266,12 +3198,39 @@ function App() {
 					</span>
 				</div>
 				<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-					<PageButton active={page === "landing"} onClick={() => navigate("landing")}>Home</PageButton>
-					<PageButton active={page === "dashboard"} onClick={() => navigate("dashboard")}>Dashboard</PageButton>
-					<PageButton active={page === "map"} onClick={() => navigate("map")}>Map</PageButton>
-					<PageButton active={page === "survivor"} onClick={() => navigate("survivor")}>Survivor</PageButton>
-					<PageButton active={page === "archive"} onClick={() => navigate("archive")}>Archive</PageButton>
-					<PageButton active={page === "osint"} onClick={() => navigate("osint")}>OSINT</PageButton>
+					<PageButton
+						active={page === "landing"}
+						onClick={() => navigate("landing")}
+					>
+						Home
+					</PageButton>
+					<PageButton
+						active={page === "dashboard"}
+						onClick={() => navigate("dashboard")}
+					>
+						Dashboard
+					</PageButton>
+					<PageButton active={page === "map"} onClick={() => navigate("map")}>
+						Map
+					</PageButton>
+					<PageButton
+						active={page === "survivor"}
+						onClick={() => navigate("survivor")}
+					>
+						Survivor
+					</PageButton>
+					<PageButton
+						active={page === "archive"}
+						onClick={() => navigate("archive")}
+					>
+						Archive
+					</PageButton>
+					<PageButton
+						active={page === "osint"}
+						onClick={() => navigate("osint")}
+					>
+						OSINT
+					</PageButton>
 				</div>
 
 				<div
@@ -2567,8 +3526,9 @@ function App() {
 				{/* Right: Alerts */}
 				<div
 					style={{
-						gridColumn: isMobile ? "1" : "3 / 4",
-						gridRow: isMobile ? "4" : "1 / 2",
+						...styles.panel,
+						gridColumn: isMobile ? "1" : "3",
+						gridRow: isMobile ? "4" : "1",
 					}}
 				>
 					<AlertsPanel alerts={alerts} />
@@ -2577,8 +3537,9 @@ function App() {
 				{/* Right: Camera */}
 				<div
 					style={{
-						gridColumn: isMobile ? "1" : "3 / 4",
-						gridRow: isMobile ? "5" : "2 / 3",
+						...styles.panel,
+						gridColumn: isMobile ? "1" : "3",
+						gridRow: isMobile ? "5" : "2",
 					}}
 				>
 					<CameraPanel src={httpBase ? `${httpBase}/api/camera/stream` : ""} />
