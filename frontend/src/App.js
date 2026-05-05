@@ -24,7 +24,11 @@ import {
 	ResponsiveContainer,
 	YAxis,
 } from "recharts";
-import { useRoverWebSocket, buildHttpBase } from "./hooks/useRoverWebSocket";
+import {
+	useRoverWebSocket,
+	buildHttpBase,
+	buildPiBridgeBase,
+} from "./hooks/useRoverWebSocket";
 import { useGamepad } from "./hooks/useGamepad";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -3606,7 +3610,7 @@ function App() {
 						gridRow: isMobile ? "5" : "2 / 3",
 					}}
 				>
-					<CameraPanel src="http://10.108.194.26:8081/camera.mjpeg" />
+					<CameraPanel src={`${buildPiBridgeBase()}/camera.mjpeg`} />
 				</div>
 			</div>
 		</div>

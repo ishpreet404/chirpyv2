@@ -71,10 +71,22 @@ chirpy_v2/
 ## ⚙️ Quick Start
 
 ### 1. Environment Configuration
-Create or edit the `localenv` file in the root directory:
+Set the PC and Raspberry Pi addresses with one command from the repo root:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\set-network.ps1 -PiIp 10.109.36.26 -PcIp 10.109.36.236
+```
+
+On the Raspberry Pi or any Bash shell, use:
+```bash
+bash scripts/set-network.sh 10.109.36.26 10.109.36.236
+```
+
+This updates `localenv` and the React `.env*` files. The root `localenv` keeps only the two machine IPs as the source of truth, then stores the derived URLs used by the backend, Pi bridge, and frontend:
 ```env
-PI_BRIDGE_URL=http://<PI_IP>:8081
-BACKEND_HTTP_URL=http://<BACKEND_IP>:8000
+PI_IP=10.109.36.26
+PC_IP=10.109.36.236
+PI_BRIDGE_URL=http://10.109.36.26:8081
+BACKEND_HTTP_URL=http://10.109.36.236:8000
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_MODEL=openai/gpt-4o-mini
 ```

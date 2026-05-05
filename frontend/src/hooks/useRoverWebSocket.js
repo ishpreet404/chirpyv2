@@ -48,6 +48,13 @@ export function buildHttpBase() {
 	return `${proto}://${window.location.hostname}:8000`;
 }
 
+export function buildPiBridgeBase() {
+	if (process.env.REACT_APP_PI_BRIDGE_URL) {
+		return process.env.REACT_APP_PI_BRIDGE_URL.replace(/\/$/, "");
+	}
+	return buildHttpBase();
+}
+
 async function fetchJson(url, options) {
 	const res = await fetch(url, options);
 	if (!res.ok) {

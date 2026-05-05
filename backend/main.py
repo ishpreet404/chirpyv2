@@ -54,8 +54,9 @@ if os.path.exists(_custom_env_path):
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", "http://192.168.1.11:8081").strip('"\'').rstrip("/")
-PI_BRIDGE_WS     = os.getenv("PI_BRIDGE_WS", "ws://192.168.1.11:8081")
+PI_IP = os.getenv("PI_IP", "10.109.36.26").strip('"\'')
+PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", f"http://{PI_IP}:8081").strip('"\'').rstrip("/")
+PI_BRIDGE_WS     = os.getenv("PI_BRIDGE_WS", f"ws://{PI_IP}:8081").strip('"\'')
 MAX_TELEMETRY_HISTORY = 2000     # packets kept in memory
 MAX_ALERTS       = 200
 ZONE_SIZE_CM = 100

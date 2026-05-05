@@ -1,7 +1,12 @@
-# IP configuration for backend + Pi bridge
+# Single source of truth for ChirpyV2 network addresses
+PI_IP=10.109.36.26
+PC_IP=10.109.36.236
+
+# Derived URLs used by backend, Pi bridge, and frontend
 PI_BRIDGE_URL=http://10.109.36.26:8081
-BACKEND_WS_URL=ws://10.109.36.236:8000/ws/rover
+PI_BRIDGE_WS=ws://10.109.36.26:8081
 BACKEND_HTTP_URL=http://10.109.36.236:8000
+BACKEND_WS_URL=ws://10.109.36.236:8000/ws/rover
 
 # OpenRouter Configuration
 OPENROUTER_API_KEY=your_key_here
