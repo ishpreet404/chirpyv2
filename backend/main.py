@@ -1147,6 +1147,25 @@ async def stop_mission():
     return {'status': 'stopped'}
 
 
+from pydantic import BaseModel
+class OsintRequest(BaseModel):
+    token: str
+    request: str
+    limit: int = 100
+    lang: str = "en"
+    type: str = "json"
+
+@app.post("/api/osint")
+async def osint_proxy(payload: OsintRequest):
+    url = "https://leakosintapi.com/"
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=payload.dict()) as response:
+                return await response.json()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/camera/stream")
 async def camera_stream():
     """Proxy the MJPEG stream from Pi bridge."""

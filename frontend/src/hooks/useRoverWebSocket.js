@@ -18,7 +18,10 @@ function readStoredTelemetryArchive() {
 function saveTelemetryArchive(items) {
 	if (typeof window === "undefined") return;
 	try {
-		window.localStorage.setItem(TELEMETRY_ARCHIVE_KEY, JSON.stringify(items.slice(-2000)));
+		window.localStorage.setItem(
+			TELEMETRY_ARCHIVE_KEY,
+			JSON.stringify(items.slice(-2000)),
+		);
 	} catch {
 		// ignore storage failures
 	}
@@ -33,7 +36,7 @@ function buildWsBase() {
 	return `${proto}://${window.location.hostname}:8000`;
 }
 
-function buildHttpBase() {
+export function buildHttpBase() {
 	if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
 	if (process.env.REACT_APP_WS_URL) {
 		return process.env.REACT_APP_WS_URL.replace(/^ws/, "http").replace(
@@ -59,7 +62,9 @@ export function useRoverWebSocket() {
 
 	const [connected, setConnected] = useState(false);
 	const [telemetry, setTelemetry] = useState(null);
-	const [telemetryArchive, setTelemetryArchive] = useState(() => readStoredTelemetryArchive());
+	const [telemetryArchive, setTelemetryArchive] = useState(() =>
+		readStoredTelemetryArchive(),
+	);
 	const [pathData, setPathData] = useState(null);
 	const [alerts, setAlerts] = useState([]);
 	const [status, setStatus] = useState({
@@ -81,14 +86,23 @@ export function useRoverWebSocket() {
 
 		const fetchTelemetryArchive = async () => {
 			try {
-				const data = await fetchJson(`${httpBaseRef.current}/api/telemetry/history?limit=500`);
+				const data = await fetchJson(
+					`${httpBaseRef.current}/api/telemetry/history?limit=500`,
+				);
 				if (cancelled) return;
 				const archive = Array.isArray(data.telemetry) ? data.telemetry : [];
 				setTelemetryArchive((prev) => {
 					const merged = [...archive, ...prev];
 					const deduped = merged.filter((item, index, list) => {
 						const key = `${item?.seq ?? ""}:${item?.ms ?? ""}:${item?.abs_x ?? ""}:${item?.abs_y ?? ""}`;
-						return index === list.findIndex((entry) => `${entry?.seq ?? ""}:${entry?.ms ?? ""}:${entry?.abs_x ?? ""}:${entry?.abs_y ?? ""}` === key);
+						return (
+							index ===
+							list.findIndex(
+								(entry) =>
+									`${entry?.seq ?? ""}:${entry?.ms ?? ""}:${entry?.abs_x ?? ""}:${entry?.abs_y ?? ""}` ===
+									key,
+							)
+						);
 					});
 					const next = deduped.slice(-2000);
 					saveTelemetryArchive(next);
@@ -105,7 +119,14 @@ export function useRoverWebSocket() {
 				if (cancelled) return;
 				setPathData((prev) => ({
 					...(prev || {}),
-					route: data.route || prev?.route || { waypoints: [], status: "idle", paused: false, active_index: 0, name: null },
+					route: data.route ||
+						prev?.route || {
+							waypoints: [],
+							status: "idle",
+							paused: false,
+							active_index: 0,
+							name: null,
+						},
 				}));
 			} catch {
 				// route planning is optional; keep dashboard usable if the API is unavailable
@@ -125,7 +146,7 @@ export function useRoverWebSocket() {
 				if (cancelled) return;
 				try {
 					const msg = JSON.parse(event.data);
-					if (msg.type === 'init') {
+					if (msg.type === "init") {
 						setTelemetry(msg.telemetry);
 						setPathData(msg.path);
 						setAlerts(msg.alerts || []);
@@ -134,7 +155,7 @@ export function useRoverWebSocket() {
 							...msg.status,
 							capabilities: msg.status.capabilities || prev.capabilities,
 						}));
-					} else if (msg.type === 'telemetry') {
+					} else if (msg.type === "telemetry") {
 						setTelemetry(msg.telemetry);
 						setPathData(msg.path);
 						setTelemetryArchive((prev) => {
@@ -142,28 +163,28 @@ export function useRoverWebSocket() {
 							saveTelemetryArchive(next);
 							return next;
 						});
-					} else if (msg.type === 'route') {
+					} else if (msg.type === "route") {
 						setPathData((prev) => ({
 							...(prev || {}),
 							...(msg.path || {}),
 							route: msg.route || prev?.route || null,
 						}));
-					} else if (msg.type === 'event') {
+					} else if (msg.type === "event") {
 						if (msg.alert) {
 							setAlerts((prev) => [msg.alert, ...prev].slice(0, 50));
 						}
-					} else if (msg.type === 'heartbeat') {
+					} else if (msg.type === "heartbeat") {
 						setStatus((prev) => ({
 							...prev,
 							...msg.status,
 							capabilities: msg.status.capabilities || prev.capabilities,
 						}));
-					} else if (msg.type === 'victim') {
+					} else if (msg.type === "victim") {
 						setStatus((prev) => ({ ...prev, victim_count: msg.count }));
 						if (msg.alert) {
 							setAlerts((prev) => [msg.alert, ...prev].slice(0, 50));
 						}
-					} else if (msg.type === 'mode') {
+					} else if (msg.type === "mode") {
 						setStatus((prev) => ({
 							...prev,
 							motion_active: msg.status.motion_active,
@@ -171,7 +192,7 @@ export function useRoverWebSocket() {
 						}));
 					}
 				} catch (e) {
-					console.error('WS message parse error:', e);
+					console.error("WS message parse error:", e);
 				}
 			};
 
@@ -183,20 +204,20 @@ export function useRoverWebSocket() {
 			};
 
 			ws.onerror = (error) => {
-				console.error('WS error:', error);
+				console.error("WS error:", error);
 			};
 		};
 
 		connect();
-			fetchTelemetryArchive();
-				fetchRouteState();
-			archiveTimer = window.setInterval(fetchTelemetryArchive, 15000);
-				routeTimer = window.setInterval(fetchRouteState, 15000);
+		fetchTelemetryArchive();
+		fetchRouteState();
+		archiveTimer = window.setInterval(fetchTelemetryArchive, 15000);
+		routeTimer = window.setInterval(fetchRouteState, 15000);
 
 		return () => {
 			cancelled = true;
-				if (archiveTimer) window.clearInterval(archiveTimer);
-				if (routeTimer) window.clearInterval(routeTimer);
+			if (archiveTimer) window.clearInterval(archiveTimer);
+			if (routeTimer) window.clearInterval(routeTimer);
 			if (ws) ws.close();
 		};
 	}, []);

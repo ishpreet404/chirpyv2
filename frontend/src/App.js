@@ -24,7 +24,7 @@ import {
 	ResponsiveContainer,
 	YAxis,
 } from "recharts";
-import { useRoverWebSocket } from "./hooks/useRoverWebSocket";
+import { useRoverWebSocket, buildHttpBase } from "./hooks/useRoverWebSocket";
 import { useGamepad } from "./hooks/useGamepad";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ const C = {
 };
 
 const OSINT_API_URL = "https://leakosintapi.com/";
-const OSINT_API_TOKEN = "8518143178:mR452s1L";
+const OSINT_API_TOKEN = "7600406809:AMnpwtem";
 const ZONE_RADIUS_M = 0.5;
 const DASHBOARD_TOP_ROW_HEIGHT = 420;
 const ALERTS_MIN_HEIGHT = DASHBOARD_TOP_ROW_HEIGHT;
@@ -108,7 +108,7 @@ function formatOsintFieldName(name) {
 }
 
 function maskOsintValue(value, fieldType) {
-	if (fieldType === "sensitive" && value) {
+	if (fieldType === "a" && value) {
 		return "*".repeat(Math.min(String(value).length, 20));
 	}
 	return value;
@@ -1802,21 +1802,47 @@ function OsintFinderPage({ onNavigate }) {
 		try {
 			const payload = {
 				token: OSINT_API_TOKEN,
-				request: query,
+				request: query.trim(),
 				limit: 100,
 				lang: "en",
 				type: "json",
 			};
 
-			const response = await fetch(OSINT_API_URL, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(payload),
-			});
+			const response = await fetch(
+				"https://corsproxy.io/?https://leakosintapi.com/",
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						token: OSINT_API_TOKEN,
+						request: query.trim(),
+						limit: 100,
+						lang: "en",
+						type: "json",
+					}),
+				},
+			);
 
-			const data = await response.json();
-			if (data.error) {
-				setError(`API Error ${data.error}: Please try again later`);
+			let data = null;
+			try {
+				data = await response.json();
+			} catch {
+				data = null;
+			}
+
+			if (!response.ok) {
+				const detail =
+					data && data.detail ? data.detail : `HTTP ${response.status}`;
+				setError(`API Error: ${detail}`);
+				return;
+			}
+
+			if (data && data.error) {
+				setError(`API Error: ${data.error}`);
+			} else if (data && (data.Status === "Error" || data["Error code"])) {
+				setError(`API Error: ${data["Error code"] || "Unknown"}`);
 			} else {
 				setResults(data);
 			}
@@ -2031,7 +2057,7 @@ function OsintFinderPage({ onNavigate }) {
 							</div>
 						</div>
 
-						{(!results.List || results.NumOfResults === 0) && (
+						{(!results.List || Object.keys(results.List).length === 0) && (
 							<div style={{ ...styles.panel, border: `1px solid ${C.green}` }}>
 								<div style={styles.panelHeader}>NO RECORDS FOUND</div>
 								<div style={{ ...styles.panelBody, color: C.dimText }}>
@@ -2040,97 +2066,109 @@ function OsintFinderPage({ onNavigate }) {
 							</div>
 						)}
 
-						{results.List && results.NumOfResults > 0 && (
+						{results.List && Object.keys(results.List).length > 0 && (
 							<div style={{ display: "grid", gap: 12 }}>
-								{Object.entries(results.List).map(([dbName, dbData]) => (
-									<div key={dbName} style={{ ...styles.panel }}>
-										<div style={styles.panelHeader}>{dbName}</div>
-										<div
-											style={{ ...styles.panelBody, display: "grid", gap: 10 }}
-										>
-											{dbData.InfoLeak && (
-												<div style={{ color: C.yellow, fontSize: 12 }}>
-													{dbData.InfoLeak}
-												</div>
-											)}
-											{dbData.Data?.map((entry, entryIdx) => (
-												<div
-													key={`${dbName}-${entryIdx}`}
-													style={{
-														border: `1px solid ${C.border}`,
-														borderRadius: 12,
-														padding: 12,
-														display: "grid",
-														gap: 8,
-													}}
-												>
-													<div
-														style={{
-															color: C.dimText,
-															fontSize: 10,
-															letterSpacing: 1.2,
-														}}
-													>
-														RECORD #{entryIdx + 1}
+								{Object.entries(results.List).map(([dbName, dbData]) => {
+									const records = Array.isArray(dbData?.Data)
+										? dbData.Data
+										: dbData?.Data
+											? [dbData.Data]
+											: [];
+									return (
+										<div key={dbName} style={{ ...styles.panel }}>
+											<div style={styles.panelHeader}>{dbName}</div>
+											<div
+												style={{
+													...styles.panelBody,
+													display: "grid",
+													gap: 10,
+												}}
+											>
+												{dbData?.InfoLeak && (
+													<div style={{ color: C.yellow, fontSize: 12 }}>
+														{dbData.InfoLeak}
 													</div>
+												)}
+												{records.map((entry, entryIdx) => (
 													<div
+														key={`${dbName}-${entryIdx}`}
 														style={{
+															border: `1px solid ${C.border}`,
+															borderRadius: 12,
+															padding: 12,
 															display: "grid",
-															gridTemplateColumns:
-																"repeat(auto-fit, minmax(180px, 1fr))",
-															gap: 10,
+															gap: 8,
 														}}
 													>
-														{Object.entries(entry).map(
-															([fieldName, fieldValue]) => {
-																if (!fieldValue || fieldValue === "null")
-																	return null;
-																const fieldType = getOsintFieldType(fieldName);
-																const color =
-																	fieldType === "sensitive"
-																		? C.red
-																		: fieldType === "contact"
-																			? C.accent
-																			: fieldType === "identity"
-																				? C.green
-																				: C.text;
-																const value = maskOsintValue(
-																	fieldValue,
-																	fieldType,
-																);
-																return (
-																	<div
-																		key={`${dbName}-${entryIdx}-${fieldName}`}
-																	>
+														<div
+															style={{
+																color: C.dimText,
+																fontSize: 10,
+																letterSpacing: 1.2,
+															}}
+														>
+															RECORD #{entryIdx + 1}
+														</div>
+														<div
+															style={{
+																display: "grid",
+																gridTemplateColumns:
+																	"repeat(auto-fit, minmax(180px, 1fr))",
+																gap: 10,
+															}}
+														>
+															{Object.entries(entry).map(
+																([fieldName, fieldValue]) => {
+																	if (!fieldValue || fieldValue === "null")
+																		return null;
+																	const fieldType =
+																		getOsintFieldType(fieldName);
+																	const color =
+																		fieldType === "sensitive"
+																			? C.red
+																			: fieldType === "contact"
+																				? C.accent
+																				: fieldType === "identity"
+																					? C.green
+																					: C.text;
+																	const value = maskOsintValue(
+																		fieldValue,
+																		fieldType,
+																	);
+																	return (
 																		<div
-																			style={{
-																				color: C.dimText,
-																				fontSize: 10,
-																				letterSpacing: 1.1,
-																			}}
+																			key={`${dbName}-${entryIdx}-${fieldName}`}
 																		>
-																			{formatOsintFieldName(fieldName)}
+																			<div
+																				style={{
+																					color: C.dimText,
+																					fontSize: 10,
+																					letterSpacing: 1.1,
+																				}}
+																			>
+																				{formatOsintFieldName(fieldName)}
+																			</div>
+																			<div
+																				style={{
+																					color,
+																					fontSize: 12,
+																					fontWeight: 700,
+																					wordBreak: "break-word",
+																				}}
+																			>
+																				{value}
+																			</div>
 																		</div>
-																		<div
-																			style={{
-																				color,
-																				fontSize: 12,
-																				fontWeight: 700,
-																				wordBreak: "break-word",
-																			}}
-																		>
-																			{value}
-																		</div>
-																	</div>
-																);
-															},
-														)}
+																	);
+																},
+															)}
+														</div>
 													</div>
-												</div>
-											))}
+												))}
+											</div>
 										</div>
-									</div>
-								))}
+									);
+								})}
 							</div>
 						)}
 					</div>
