@@ -47,7 +47,12 @@ def audio_callback(indata, frames, time, status):
     q.put(bytes(indata))
 
 class SurvivorModule:
-    def __init__(self, model_path="model"):
+    def __init__(self, model_path=None):
+        if model_path is None:
+            # Try to find the model directory relative to this script
+            script_dir = os.path.dirname(os.path.realpath(__file__))
+            model_path = os.path.join(script_dir, "model")
+            
         if not os.path.exists(model_path):
             print(f"Please download a small model from https://alphacephei.com/vosk/models and unpack as '{model_path}'")
             # We will continue but speech recognition won't work
