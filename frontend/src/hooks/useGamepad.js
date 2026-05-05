@@ -13,6 +13,12 @@ export function useGamepad(
 	const lastCmdRef = useRef(null);
 	const rafRef = useRef(null);
 	const lastPollRef = useRef(0);
+	const sendCommandRef = useRef(sendCommand);
+
+	// Keep sendCommandRef in sync with sendCommand prop without causing re-runs
+	useEffect(() => {
+		sendCommandRef.current = sendCommand;
+	}, [sendCommand]);
 
 	useEffect(() => {
 		function connectHandler(e) {
@@ -64,7 +70,7 @@ export function useGamepad(
 					if (desired !== last) {
 						lastCmdRef.current = desired;
 						try {
-							sendCommand(desired);
+							sendCommandRef.current(desired);
 						} catch (err) {
 							// ignore send errors
 						}
@@ -81,7 +87,7 @@ export function useGamepad(
 			window.removeEventListener("gamepaddisconnected", disconnectHandler);
 			if (rafRef.current) cancelAnimationFrame(rafRef.current);
 		};
-	}, [sendCommand, pollIntervalMs, axisThreshold]);
+	}, [pollIntervalMs, axisThreshold]);
 
 	return { connected };
 }

@@ -423,6 +423,7 @@ def _pi_connected() -> bool:
         return False
     return (time.time() - mission.pi_last_seen) < 5.0
 
+
 mode_task: asyncio.Task | None = None
 mode_cancel: asyncio.Event | None = None
 
@@ -1180,20 +1181,20 @@ async def start_periodic_broadcast():
     async def _broadcast_loop():
         while True:
             await asyncio.sleep(1)
-            if mission.latest_telemetry:
-                await mission.broadcast('dashboard', {
-                    'type':   'heartbeat',
-                    'status': {
-                        'pi_connected':    _pi_connected(),
-                        'mission_active':  mission.mission_active,
-                        'rover_state':     mission.rover_state,
-                        'auto_mode':       mission.auto_mode,
-                        'obstacle_active': mission.obstacle_active,
-                        'victim_count':    mission.victim_count,
-                        'motion_active':   mission.motion_active,
-                        'motion_mode':     mission.motion_mode,
-                        'server_ts':       time.time(),
-                        'capabilities':    CAPABILITIES,
-                    },
-                })
+            # Always send heartbeat regardless of telemetry
+            await mission.broadcast('dashboard', {
+                'type':   'heartbeat',
+                'status': {
+                    'pi_connected':    _pi_connected(),
+                    'mission_active':  mission.mission_active,
+                    'rover_state':     mission.rover_state,
+                    'auto_mode':       mission.auto_mode,
+                    'obstacle_active': mission.obstacle_active,
+                    'victim_count':    mission.victim_count,
+                    'motion_active':   mission.motion_active,
+                    'motion_mode':     mission.motion_mode,
+                    'server_ts':       time.time(),
+                    'capabilities':    CAPABILITIES,
+                },
+            })
     asyncio.create_task(_broadcast_loop())
