@@ -28,21 +28,28 @@ function saveTelemetryArchive(items) {
 }
 
 function buildWsBase() {
-	if (process.env.REACT_APP_WS_URL) return process.env.REACT_APP_WS_URL;
+	if (process.env.REACT_APP_WS_URL) {
+		return process.env.REACT_APP_WS_URL.replace(/\/$/, "").replace(
+			/\/ws\/dashboard$/,
+			"",
+		);
+	}
 	if (process.env.REACT_APP_API_URL) {
-		return process.env.REACT_APP_API_URL.replace(/^http/, "ws");
+		return process.env.REACT_APP_API_URL.replace(/^http/, "ws").replace(/\/$/, "");
 	}
 	const proto = window.location.protocol === "https:" ? "wss" : "ws";
 	return `${proto}://${window.location.hostname}:8000`;
 }
 
 export function buildHttpBase() {
-	if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+	if (process.env.REACT_APP_API_URL) {
+		return process.env.REACT_APP_API_URL.replace(/\/$/, "");
+	}
 	if (process.env.REACT_APP_WS_URL) {
 		return process.env.REACT_APP_WS_URL.replace(/^ws/, "http").replace(
 			/\/ws\/dashboard$/,
 			"",
-		);
+		).replace(/\/$/, "");
 	}
 	const proto = window.location.protocol === "https:" ? "https" : "http";
 	return `${proto}://${window.location.hostname}:8000`;
