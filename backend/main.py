@@ -58,6 +58,9 @@ PI_BRIDGE_URL    = os.getenv("PI_BRIDGE_URL", "http://192.168.1.11:8081").strip(
 PI_BRIDGE_WS     = os.getenv("PI_BRIDGE_WS", "ws://192.168.1.11:8081")
 MAX_TELEMETRY_HISTORY = 2000     # packets kept in memory
 MAX_ALERTS       = 200
+ZONE_SIZE_CM = 100
+ZONE_BLOCKED_OBS_MIN = 1
+ZONE_HIGH_RISK_OBS_MIN = 2
 
 FIRMWARE_PROFILE = "chirpy_v2_legacy"
 SUPPORTED_COMMANDS = ("F", "B", "L", "R", "S")
@@ -229,6 +232,8 @@ class MissionState:
             self.mission_start_t = time.time()
             self.add_alert('info', 'Mission started')
 
+        self.update_zones()
+
     def update_path(self, path_data: dict):
         if not isinstance(path_data, dict):
             return
@@ -257,6 +262,8 @@ class MissionState:
             merged['annotations'] = []
 
         self.path_data = merged
+
+        self.update_zones()
 
     def update_route(self, route_data: dict):
         if not isinstance(route_data, dict):
@@ -305,6 +312,107 @@ class MissionState:
             {'x': x, 'y': y, 'confidence': confidence, 'victim_id': self.victim_count}
         )
         return alert
+
+    def update_zones(self):
+        """Compute zone intelligence from telemetry, obstacles, and victims."""
+        size = ZONE_SIZE_CM
+
+        def zone_key(x: float, y: float) -> tuple[int, int]:
+            return (math.floor(x / size), math.floor(y / size))
+
+        visited_counts: dict[tuple[int, int], int] = {}
+        last_ts: dict[tuple[int, int], float] = {}
+        for item in self.telemetry_history:
+            x = item.get('abs_x')
+            y = item.get('abs_y')
+            if x is None or y is None:
+                continue
+            key = zone_key(x, y)
+            visited_counts[key] = visited_counts.get(key, 0) + 1
+            ts = item.get('server_ts') or time.time()
+            last_ts[key] = max(last_ts.get(key, 0.0), ts)
+
+        obstacle_counts: dict[tuple[int, int], int] = {}
+        for obs in self.path_data.get('obstacles', []) or []:
+            ox = obs.get('x')
+            oy = obs.get('y')
+            if ox is None or oy is None:
+                continue
+            key = zone_key(ox, oy)
+            obstacle_counts[key] = obstacle_counts.get(key, 0) + 1
+
+        victim_counts: dict[tuple[int, int], int] = {}
+        for victim in self.path_data.get('victims', []) or []:
+            vx = victim.get('x')
+            vy = victim.get('y')
+            if vx is None or vy is None:
+                continue
+            key = zone_key(vx, vy)
+            victim_counts[key] = victim_counts.get(key, 0) + 1
+
+        visited_keys = set(visited_counts.keys())
+        blocked_keys = {k for k, c in obstacle_counts.items() if c >= ZONE_BLOCKED_OBS_MIN}
+        high_risk_keys = {k for k, count in victim_counts.items() if count > 0}
+
+        current = self.latest_telemetry or {}
+        cur_x = current.get('abs_x')
+        cur_y = current.get('abs_y')
+        current_zone = zone_key(cur_x, cur_y) if cur_x is not None and cur_y is not None else None
+
+        def neighbors(key: tuple[int, int]) -> list[tuple[int, int]]:
+            return [
+                (key[0] + 1, key[1]),
+                (key[0] - 1, key[1]),
+                (key[0], key[1] + 1),
+                (key[0], key[1] - 1),
+            ]
+
+        frontier = set()
+        for key in visited_keys:
+            for nb in neighbors(key):
+                if nb not in visited_keys and nb not in blocked_keys:
+                    frontier.add(nb)
+
+        suggested = None
+        if current_zone and frontier:
+            queue = deque([current_zone])
+            seen = {current_zone}
+            while queue:
+                node = queue.popleft()
+                if node in frontier:
+                    suggested = node
+                    break
+                for nb in neighbors(node):
+                    if nb in seen or nb in blocked_keys:
+                        continue
+                    seen.add(nb)
+                    queue.append(nb)
+
+        zones = {
+            'size_cm': size,
+            'current': {'x': current_zone[0], 'y': current_zone[1]} if current_zone else None,
+            'visited': [
+                {'x': k[0], 'y': k[1], 'count': visited_counts[k], 'last_ts': last_ts.get(k)}
+                for k in visited_counts
+            ],
+            'blocked': [
+                {'x': k[0], 'y': k[1], 'count': obstacle_counts.get(k, 0)}
+                for k in blocked_keys
+            ],
+            'high_risk': [
+                {
+                    'x': k[0],
+                    'y': k[1],
+                    'obstacles': obstacle_counts.get(k, 0),
+                    'victims': victim_counts.get(k, 0),
+                }
+                for k in high_risk_keys
+            ],
+            'frontier': [{'x': k[0], 'y': k[1]} for k in frontier],
+            'suggested_next': {'x': suggested[0], 'y': suggested[1]} if suggested else None,
+        }
+
+        self.path_data['zones'] = zones
 
 
 mission = MissionState()
