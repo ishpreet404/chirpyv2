@@ -6,7 +6,6 @@ import time
 import queue
 import logging
 import threading
-import requests
 import asyncio
 import aiohttp
 
@@ -16,14 +15,18 @@ try:
     import sounddevice as sd
     from vosk import Model, KaldiRecognizer
 except ImportError:
-    print("Please install dependencies: pip install vosk sounddevice")
-    sys.exit(1)
+    sd = None
+    Model = None
+    KaldiRecognizer = None
+    logging.warning("Missing vosk/sounddevice; speech features disabled")
 
 # Voice synthesis (very lightweight for Pi 4)
 # Option A: espeak-ng (robotic but fast)
 # Option B: gTTS (needs internet)
 # Option C: pyttsx3 (can use espeak/sapi5)
 import subprocess
+
+from survivor_audio_flow import SurvivorAudioFlow
 
 def speak(text):
     print(f"TTS: {text}")
@@ -38,14 +41,6 @@ MODEL_PATH = "model" # Place a small Vosk model here: https://alphacephei.com/vo
 SAMPLERATE = 16000
 BACKEND_URL = os.getenv("BACKEND_HTTP_URL", "http://localhost:8000")
 
-# --- State ---
-q = queue.Queue()
-
-def audio_callback(indata, frames, time, status):
-    if status:
-        print(status, file=sys.stderr)
-    q.put(bytes(indata))
-
 class SurvivorModule:
     def __init__(self, model_path=None):
         if model_path is None:
@@ -53,21 +48,39 @@ class SurvivorModule:
             script_dir = os.path.dirname(os.path.realpath(__file__))
             model_path = os.path.join(script_dir, "model")
             
-        if not os.path.exists(model_path):
-            print(f"Please download a small model from https://alphacephei.com/vosk/models and unpack as '{model_path}'")
-            # We will continue but speech recognition won't work
+        if not os.path.exists(model_path) or Model is None:
+            logging.warning(
+                "Speech model not available; download a Vosk model into '%s'",
+                model_path,
+            )
             self.model = None
         else:
             self.model = Model(model_path)
-        self.running = True
-        self.responses = {"can_move": None, "conscious": True}
 
-    async def report_to_backend(self, transcript):
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        audio_root = os.path.join(repo_root, "Audio Files")
+
+        self.running = True
+        self.responses = {}
+        self._interaction_lock = threading.Lock()
+        self.audio_flow = SurvivorAudioFlow(
+            audio_root=audio_root,
+            model_path=model_path,
+            samplerate=SAMPLERATE,
+        )
+
+    async def report_to_backend(self, transcript, question=None, answer=None, key=None):
         url = f"{BACKEND_URL}/api/survivors/interaction"
         payload = {
             "transcript": transcript,
             "responses": self.responses
         }
+        if question is not None:
+            payload["question"] = question
+        if answer is not None:
+            payload["answer"] = answer
+        if key is not None:
+            payload["key"] = key
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload, timeout=5) as resp:
@@ -80,65 +93,30 @@ class SurvivorModule:
             print(f"Backend sync error: {e}")
 
     def run(self):
-        if not self.model:
-            return
-
-        with sd.RawInputStream(samplerate=SAMPLERATE, blocksize=8000, device=None,
-                               dtype='int16', channels=1, callback=audio_callback):
-            rec = KaldiRecognizer(self.model, SAMPLERATE)
-            print("Survivor Module Active. Listening for 'help' or questions...")
-            
-            while self.running:
-                data = q.get()
-                if rec.AcceptWaveform(data):
-                    result = json.loads(rec.Result())
-                    text = result.get("text", "")
-                    if text:
-                        print(f"Detected: {text}")
-                        
-                        # Expanded Keyword detection logic
-                        words = set(text.lower().split())
-                        
-                        # Emergency / Immediate Action
-                        if any(w in words for w in ["help", "save", "emergency", "danger"]):
-                            speak("I am ChirpyV2, the rescue rover. I have detected your emergency signal. My location and your status are being relayed to command. Stay calm.")
-                            asyncio.run(self.report_to_backend(text))
-                            
-                        # Mobility Triage
-                        elif any(w in words for w in ["move", "stuck", "trapped", "cannot"]):
-                            if "no" in words or "cannot" in words or "stuck" in words:
-                                self.responses["can_move"] = False
-                            speak("I have logged that you are restricted. Do not attempt to move if it causes pain. Help is on the way.")
-                            asyncio.run(self.report_to_backend(text))
-                            
-                        # Injury Triage
-                        elif any(w in words for w in ["injured", "hurt", "bleeding", "pain"]):
-                            speak("I am logging your injury status for the medical response team. Reassurance: Professionals are coming.")
-                            asyncio.run(self.report_to_backend(text))
-
-                        # Identity / Capability Query
-                        elif any(w in words for w in ["who", "what", "robot"]):
-                            speak("I am ChirpyV2, a disaster rescue rover. I am here to find survivors and coordinate with human rescue teams.")
-                            asyncio.run(self.report_to_backend(text))
-
-                        # General / AI Handover
-                        else:
-                            # Use OpenRouter for general interaction
-                            asyncio.run(self.report_to_backend(text))
+        # Keep the module alive for future extensions. The scripted flow is started
+        # by ask_questions when a victim is detected.
+        while self.running:
+            time.sleep(0.5)
 
     def ask_questions(self):
-        """Pre-programmed triage sequence"""
-        speak("I am ChirpyV2, the rescue rover. I have detected you. Help is on the way.")
-        time.sleep(1.5)
-        speak("I need to check your status for the rescue teams.")
-        time.sleep(1)
-        speak("Are you injured?")
-        asyncio.run(self.report_to_backend("SYSTEM TRIGGER: ARE YOU INJURED?"))
-        time.sleep(4)
-        speak("Can you move?")
-        asyncio.run(self.report_to_backend("SYSTEM TRIGGER: CAN YOU MOVE?"))
-        time.sleep(2)
-        speak("Understood. I am staying online to monitor you. Please remain calm.")
+        """Run the scripted Q&A flow with recorded audio prompts."""
+        if not self.model:
+            logging.warning("Speech model not available; skipping Q&A flow")
+            return
+        if not self._interaction_lock.acquire(blocking=False):
+            return
+
+        def report_cb(question, answer, key):
+            question_text = question
+            answer_text = answer or ""
+            self.responses[f"{key}:{question_text}"] = answer_text
+            transcript = f"Q: {question_text} | A: {answer_text}"
+            asyncio.run(self.report_to_backend(transcript, question_text, answer_text, key))
+
+        try:
+            self.audio_flow.run_interaction(report_cb)
+        finally:
+            self._interaction_lock.release()
 
 if __name__ == "__main__":
     module = SurvivorModule()
